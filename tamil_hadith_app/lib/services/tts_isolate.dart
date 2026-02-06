@@ -204,55 +204,286 @@ class _TtsWorker {
   static const int _maxTokensPerChunk = 250;
   static const int _crossfadeSamples = 400;
   static const double _silenceThreshold = 0.01;
+  static const int _sampleRate = 16000;
 
-  // ── Normalization (same as TtsEngine) ──
+  // ══════════════════════════════════════════════════════════════
+  // 1. ABBREVIATION EXPANSION — expand Islamic honorific abbreviations
+  //    Must run FIRST so later rules can match the expanded forms.
+  // ══════════════════════════════════════════════════════════════
 
+  /// Parenthesized abbreviations: நபி(ஸல்), அலி(ரலி), etc.
   static final RegExp _parenAbbrevPattern = RegExp(
-    r'\(\s*(ஸல்|அலை|ரலி)\s*\)',
+    r'\(\s*(ஸல்|அலை|ரலி|ரழி)\s*\)',
   );
 
+  /// Standalone abbreviations (word-boundary aware)
   static const Map<String, String> _honorificExpansions = {
-    'ஸல்': 'ஸல்லலாஹு அலைஹி வஸல்லம்',
-    'அலை': 'அலைஹிஸ்ஸலாம்',
-    'ரலி': 'ரலியல்லாஹு அன்ஹு',
+    'ஸல்':  'ஸல்லல்லாஹு அலைஹி வசல்லம்',
+    'அலை':  'அலைஹிஸ்ஸலாம்',
+    'ரலி':  'ரழியல்லாஹு அன்ஹு',
+    'ரழி':  'ரழியல்லாஹு அன்ஹு',
   };
+
+  // ══════════════════════════════════════════════════════════════
+  // 2. ARABIC / ISLAMIC PRONUNCIATION CORRECTIONS
+  //    Tamil TTS model mispronounces Arabic-origin words.
+  //    Minimal phonetic nudges — NOT aggressive rewriting.
+  // ══════════════════════════════════════════════════════════════
 
   static const Map<String, String> _pronunciationFixes = {
-    'அல்லாஹ்': 'அல்லாஹு',
-    'ரஸூல்': 'ரசூல்',
-    'ஹதீஸ்': 'ஹதீது',
-    'இப்னு': 'இப்னு',
-    'அப்துல்லாஹ்': 'அப்துல்லாஹி',
-    'உமர்': 'உமரு',
-    'உஸ்மான்': 'உதுமான்',
-    'ஸஹீஹ்': 'ஸஹீஹு',
-    'ஃபி': 'ஃபி',
+    // ── Name endings: remove trailing -u that model adds ──
+    'முஹம்மது':     'முஹம்மத்',
+    'அஹ்மது':      'அஹ்மத்',
+    // ── Common Arabic terms ──
+    'ரஸூல்':       'ரசூல்',
+    'ஹதீஸ்':       'ஹதீஸ்',
+    'அப்துல்லாஹ்':  'அப்துல்லாஹ்',
+    'ஸஹீஹ்':       'ஸஹீஹ்',
+    'ஸஹீஹ':        'ஸஹீஹ்',
+    // ── Long vowel enforcement ──
+    'அல்லா ':      'அல்லாஹ் ',    // incomplete → proper ending
+    'ரஹ்மான':      'ரஹ்மான்',
+    'ரஹீம':        'ரஹீம்',
+    // ── Common mispronounced names ──
+    'இப்ராஹிம்':   'இப்ராஹீம்',
+    'இஸ்மாயில்':   'இஸ்மாஈல்',
+    'ஸுலைமான்':    'ஸுலைமான்',
   };
 
-  static final RegExp _hadithNumPattern = RegExp(
-    r'ஹதீது\s*\d+|ஹதீஸ்\s*\d+|எண்\s*:\s*\d+',
-  );
+  // ══════════════════════════════════════════════════════════════
+  // 3. SMART PAUSE INSERTION — makes speech sound human
+  //    Add comma AFTER narration flow words.
+  //    Add comma BEFORE contrast/conjunction words.
+  // ══════════════════════════════════════════════════════════════
 
-  static const Map<String, String> _narrationPauses = {
-    'என நபி': 'என நபி ... ',
-    'கூறினார்கள்': 'கூறினார்கள் ... ',
-    'அறிவித்தார்கள்': 'அறிவித்தார்கள் ... ',
-    'என்று கூறினார்': 'என்று கூறினார் ... ',
-    'என அறிவித்தார்': 'என அறிவித்தார் ... ',
-    'அவர்கள் கூறினார்': 'அவர்கள் கூறினார் ... ',
-  };
+  /// Words after which a comma is inserted (narration flow)
+  static const List<String> _pauseAfterWords = [
+    'கூறினார்கள்',
+    'அறிவித்தார்கள்',
+    'கூறினார்',
+    'அறிவித்தார்',
+    'என்று',
+    'ஆக',
+    'பின்னர்',
+    'மேலும்',
+    'அதனால்',
+    'இதனால்',
+    'எனவே',
+    'அப்போது',
+    'பிறகு',
+    'ஆகவே',
+    'இறுதியாக',
+    'அடுத்து',
+  ];
+
+  /// Words before which a comma is inserted (contrast/shift)
+  static const List<String> _pauseBeforeWords = [
+    'ஆனால்',
+    'எனினும்',
+    'அல்லது',
+    'ஆயினும்',
+    'இருப்பினும்',
+  ];
+
+  // ══════════════════════════════════════════════════════════════
+  // 4. SACRED REFERENCE PAUSES — respectful slight pause before
+  //    mentions of Allah, Prophet, Rasool
+  // ══════════════════════════════════════════════════════════════
+
+  static const List<String> _sacredWords = [
+    'அல்லாஹ்',
+    'அல்லாஹு',
+    'நபி',
+    'ரசூல்',
+    'ரஸூல்',
+  ];
+
+  // ══════════════════════════════════════════════════════════════
+  // 5. WAQF (long pause) PATTERNS — inserted as silence after chunk
+  // ══════════════════════════════════════════════════════════════
 
   static final List<RegExp> _waqfPatterns = [
-    RegExp(r'என்று நபி\s*ஸல்லலாஹு அலைஹி வஸல்லம்\s*அவர்கள்'),
-    RegExp(r'நபி\s*ஸல்லலாஹு அலைஹி வஸல்லம்\s*கூறினார்'),
+    RegExp(r'ஸல்லல்லாஹு அலைஹி வசல்லம்'),  // salawat — respectful pause
+    RegExp(r'ரழியல்லாஹு அன்ஹு'),             // radi allahu anhu
+    RegExp(r'அலைஹிஸ்ஸலாம்'),                  // alaihissalam
+    RegExp(r'என்று நபி\s*ஸல்லல்லாஹு அலைஹி வசல்லம்\s*அவர்கள்'),
+    RegExp(r'நபி\s*ஸல்லல்லாஹு அலைஹி வசல்லம்\s*கூறினார்'),
     RegExp(r'அல்லாஹுவின் தூதர்.*?கூறினார்'),
     RegExp(r'என்று அறிவித்தார்'),
     RegExp(r'என அறிவித்தார்'),
     RegExp(r'என்று கூறினார்'),
   ];
 
-  static const int _waqfPauseMs = 400;
-  static const int _sampleRate = 16000;
+  /// Variable pause durations — human narration never pauses the exact same
+  /// duration twice. Using randomized ranges removes robotic rhythm.
+  final Random _rng = Random();
+
+  /// Waqf / salawat pause scaled by sentence length — imam-style pacing.
+  /// Longer sentences get proportionally longer pauses for scholarly feel.
+  int _waqfPauseFor(String chunk) {
+    final len = chunk.length;
+    if (len > 180) return 520 + _rng.nextInt(180);
+    if (len > 100) return 420 + _rng.nextInt(150);
+    return 320 + _rng.nextInt(120);
+  }
+
+  /// Sentence boundary: 160–280ms (natural gap)
+  int get _sentenceGapMs => 160 + _rng.nextInt(120);
+
+  /// Comma / semicolon: 60–120ms (breathing rhythm)
+  int get _commaGapMs => 60 + _rng.nextInt(60);
+
+  /// Sacred word pre-delay: 100–160ms (respectful tone)
+  int get _sacredPreDelayMs => 100 + _rng.nextInt(60);
+
+  /// Paragraph-start extra pause: 100–180ms (intentional opening)
+  int get _paragraphStartMs => 100 + _rng.nextInt(80);
+
+  /// Long chunk breath: 180–300ms (narrator breathing after >4s)
+  int get _longChunkBreathMs => 180 + _rng.nextInt(120);
+
+  /// Check if chunk contains sacred references (Allah, Nabi, Rasool)
+  bool _containsSacred(String text) {
+    for (final word in _sacredWords) {
+      if (text.contains(word)) return true;
+    }
+    return false;
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // 5b. ARABIC NAME CONSONANT STOPS
+  //     Tamil VITS adds trailing "உ" to Arabic names ending in
+  //     consonant clusters (virama). Adding comma after the name
+  //     forces a prosodic stop, preventing the epenthetic vowel.
+  //     e.g. முஹம்மத் → "muhammatthu" becomes clean "muhammath"
+  // ══════════════════════════════════════════════════════════════
+
+  static const List<String> _arabicNameStops = [
+    'முஹம்மத்',
+    'அஹ்மத்',
+    'இப்ராஹீம்',
+    'இஸ்மாஈல்',
+    'ஸுலைமான்',
+    'உஸ்மான்',
+    'அப்துர்ரஹ்மான்',
+    'அப்துல்லாஹ்',
+    'ஸஹீஹ்',
+    'யூசுஃப்',
+    'ஆயிஷா',
+  ];
+
+  // ══════════════════════════════════════════════════════════════
+  // 5c. LONG VOWEL ELONGATION
+  //     Tamil TTS shortens Arabic long-aa/ee sounds.
+  //     Duplicate the vowel sign (ா→ாா, ீ→ீீ) so VITS sustains
+  //     the vowel longer. Only for key Islamic terms.
+  // ══════════════════════════════════════════════════════════════
+
+  static const Map<String, String> _longVowelFixes = {
+    'அல்லாஹ்': 'அல்லாாஹ்',     // elongate laa in Allah
+    'ரஹ்மான்': 'ரஹ்மாான்',      // elongate maa in Rahman
+    'ரஹீம்':   'ரஹீீம்',        // elongate hee in Raheem
+    'குர்ஆன்': 'குர்ஆான்',      // elongate aa in Quran
+    'சுப்ஹான்': 'சுப்ஹாான்',    // elongate haa in Subhan
+    'ஈமான்':   'ஈமாான்',        // elongate maa in Iman
+    'ரமலான்':  'ரமலாான்',       // elongate laa in Ramadan
+  };
+
+  // ══════════════════════════════════════════════════════════════
+  // 5d. EMPHASIS WORDS — add comma pause for stress in narration
+  // ══════════════════════════════════════════════════════════════
+
+  static const List<String> _emphasisWords = [
+    'உண்மையாக',
+    'நிச்சயமாக',
+    'கவனியுங்கள்',
+    'எச்சரிக்கை',
+    'கட்டாயமாக',
+    'அறிந்துகொள்ளுங்கள்',
+  ];
+
+  // ══════════════════════════════════════════════════════════════
+  // 6. HADITH NUMBER STRIPPING — numbers like "ஹதீஸ் 1234" are noise
+  // ══════════════════════════════════════════════════════════════
+
+  static final RegExp _hadithNumPattern = RegExp(
+    r'ஹதீஸ்\s*(?:எண்\s*:?\s*)?\d+|ஹதீது\s*\d+|எண்\s*:\s*\d+',
+  );
+
+  // ══════════════════════════════════════════════════════════════
+  // 7. TAMIL NUMBER WORDS — convert digits to spoken Tamil
+  // ══════════════════════════════════════════════════════════════
+
+  static const Map<int, String> _tamilOnes = {
+    0: 'பூஜ்ஜியம்',
+    1: 'ஒன்று', 2: 'இரண்டு', 3: 'மூன்று', 4: 'நான்கு', 5: 'ஐந்து',
+    6: 'ஆறு', 7: 'ஏழு', 8: 'எட்டு', 9: 'ஒன்பது', 10: 'பத்து',
+    11: 'பதினொன்று', 12: 'பன்னிரண்டு', 13: 'பதிமூன்று', 14: 'பதினான்கு',
+    15: 'பதினைந்து', 16: 'பதினாறு', 17: 'பதினேழு', 18: 'பதினெட்டு',
+    19: 'பத்தொன்பது',
+  };
+
+  static const Map<int, String> _tamilTens = {
+    2: 'இருபது', 3: 'முப்பது', 4: 'நாற்பது', 5: 'ஐம்பது',
+    6: 'அறுபது', 7: 'எழுபது', 8: 'எண்பது', 9: 'தொண்ணூறு',
+  };
+
+  static const Map<int, String> _tamilTenPrefixes = {
+    2: 'இருபத்து', 3: 'முப்பத்து', 4: 'நாற்பத்து', 5: 'ஐம்பத்து',
+    6: 'அறுபத்து', 7: 'எழுபத்து', 8: 'எண்பத்து', 9: 'தொண்ணூற்று',
+  };
+
+  static const Map<int, String> _tamilHundreds = {
+    1: 'நூறு', 2: 'இருநூறு', 3: 'முந்நூறு', 4: 'நானூறு', 5: 'ஐநூறு',
+    6: 'அறுநூறு', 7: 'எழுநூறு', 8: 'எண்ணூறு', 9: 'தொள்ளாயிரம்',
+  };
+
+  static const Map<int, String> _tamilHundredPrefixes = {
+    1: 'நூற்று', 2: 'இருநூற்று', 3: 'முந்நூற்று', 4: 'நானூற்று',
+    5: 'ஐநூற்று', 6: 'அறுநூற்று', 7: 'எழுநூற்று', 8: 'எண்ணூற்று',
+    9: 'தொள்ளாயிரத்து',
+  };
+
+  /// Convert an integer (0–9999) to Tamil words.
+  static String _numberToTamil(int n) {
+    if (n < 0) return 'கழித்தல் ${_numberToTamil(-n)}';
+    if (n <= 19) return _tamilOnes[n]!;
+    if (n < 100) {
+      final tens = n ~/ 10;
+      final ones = n % 10;
+      if (ones == 0) return _tamilTens[tens]!;
+      return '${_tamilTenPrefixes[tens]!} ${_tamilOnes[ones]!}';
+    }
+    if (n < 1000) {
+      final hundreds = n ~/ 100;
+      final remainder = n % 100;
+      if (remainder == 0) return _tamilHundreds[hundreds]!;
+      return '${_tamilHundredPrefixes[hundreds]!} ${_numberToTamil(remainder)}';
+    }
+    if (n < 10000) {
+      final thousands = n ~/ 1000;
+      final remainder = n % 1000;
+      final prefix = thousands == 1 ? 'ஆயிரத்து' : '${_numberToTamil(thousands)} ஆயிரத்து';
+      if (remainder == 0) {
+        return thousands == 1 ? 'ஆயிரம்' : '${_numberToTamil(thousands)} ஆயிரம்';
+      }
+      return '$prefix ${_numberToTamil(remainder)}';
+    }
+    // >9999: just return digit string (rare in hadith)
+    return n.toString();
+  }
+
+  /// Replace standalone numbers in text with Tamil words.
+  /// Matches 1–4 digit numbers bounded by word boundaries.
+  static final RegExp _standaloneNumberPattern = RegExp(r'(?<=\s|^)(\d{1,4})(?=\s|[.,;:!?]|$)');
+
+  static String _convertNumbers(String text) {
+    return text.replaceAllMapped(_standaloneNumberPattern, (m) {
+      final n = int.tryParse(m.group(1)!);
+      if (n == null || n > 9999) return m.group(0)!;
+      return _numberToTamil(n);
+    });
+  }
 
   _TtsWorker(this._mainPort);
 
@@ -309,17 +540,50 @@ class _TtsWorker {
       final sentences = _splitIntoSentences(normalizedText);
       debugPrint('TTS-Isolate: ${sentences.length} chunks from ${normalizedText.length} chars');
       Float32List? prevTail;
+      bool isFirstAudioChunk = true;
 
       for (int i = 0; i < sentences.length; i++) {
         if (cancelled) break;
 
         final chunk = sentences[i];
         if (chunk.trim().isEmpty) continue;
+        // ── Guard: skip punctuation-only fragments ──
+        //    Aggressive comma insertion can create bare "," or "." fragments
+        //    that crash or confuse the native VITS engine.
+        if (RegExp(r'^[\s,;:.!?।]+$').hasMatch(chunk.trim())) continue;
+
         final chunkTokens = _tokenizer.tokenize(chunk);
-        if (chunkTokens.isEmpty) continue;
+        // ── Guard: minimum token threshold ──
+        //    VITS needs ≥3 tokens for stable synthesis; fewer tokens
+        //    can produce silence, garbage, or native-level crashes.
+        if (chunkTokens.length < 3) {
+          debugPrint('TTS-Isolate: chunk ${i+1} skipped (${chunkTokens.length} tokens)');
+          continue;
+        }
 
         debugPrint('TTS-Isolate: chunk ${i+1}/${sentences.length} (${chunkTokens.length} tokens)');
-        final raw = _synthesizeNative(chunkTokens);
+
+        // ── Pre-synthesis silences (only for validated chunks) ──
+        if (isFirstAudioChunk) {
+          // Paragraph-start delay: intentional opening
+          _mainPort.send(TtsChunk(requestId, _roomTone(_paragraphStartMs)));
+        } else {
+          // Micro pitch reset: ~12ms room-tone gap resets prosody contour
+          _mainPort.send(TtsChunk(requestId, _roomTone(12)));
+          // Sacred pre-delay: respectful silence before Allah/Nabi/Rasool
+          if (_containsSacred(chunk)) {
+            _mainPort.send(TtsChunk(requestId, _roomTone(_sacredPreDelayMs)));
+          }
+        }
+
+        // ── Synthesize with native FFI (guarded against crashes) ──
+        Float32List? raw;
+        try {
+          raw = _synthesizeNative(chunkTokens);
+        } catch (e) {
+          debugPrint('TTS-Isolate: chunk ${i+1} native error: $e');
+          continue;
+        }
         if (raw == null || raw.isEmpty) {
           debugPrint('TTS-Isolate: chunk ${i+1} synthesize returned null/empty');
           continue;
@@ -331,6 +595,9 @@ class _TtsWorker {
           continue;
         }
         debugPrint('TTS-Isolate: chunk ${i+1} raw=${raw.length} trimmed=${trimmed.length} (${(trimmed.length/16000).toStringAsFixed(2)}s)');
+
+        // First successful audio produced
+        isFirstAudioChunk = false;
 
         if (prevTail != null) {
           final overlap = min(_crossfadeSamples, min(prevTail.length, trimmed.length));
@@ -350,11 +617,23 @@ class _TtsWorker {
           emitAudio = trimmed;
         }
 
+        // ── Post-chunk pause hierarchy (variable durations) ──
         if (_shouldInsertWaqf(chunk)) {
-          emitAudio = _appendSilence(emitAudio, _waqfPauseMs);
+          emitAudio = _appendSilence(emitAudio, _waqfPauseFor(chunk));
+        } else if (i < sentences.length - 1) {
+          final trimEnd = chunk.trimRight();
+          if (trimEnd.endsWith(',') || trimEnd.endsWith(';')) {
+            emitAudio = _appendSilence(emitAudio, _commaGapMs);
+          } else {
+            emitAudio = _appendSilence(emitAudio, _sentenceGapMs);
+          }
         }
 
-        // Send chunk back to main isolate via TransferableTypedData for zero-copy
+        // ── Long-chunk breathing: narrator inhale after >4s of speech ──
+        if (trimmed.length > _sampleRate * 4) {
+          emitAudio = _appendSilence(emitAudio, _longChunkBreathMs);
+        }
+
         _mainPort.send(TtsChunk(requestId, emitAudio));
       }
 
@@ -365,37 +644,143 @@ class _TtsWorker {
     }
   }
 
-  // ── Text normalization (identical to TtsEngine) ──
+  // ══════════════════════════════════════════════════════════════
+  // TEXT NORMALIZATION PIPELINE — runs in order:
+  //   1. Unicode cleanup
+  //   2. Double-punctuation normalization
+  //   3. Hadith number stripping
+  //   4. Abbreviation expansion  (ஸல் → ஸல்லல்லாஹு அலைஹி வசல்லம்)
+  //   5. Arabic pronunciation fixes
+  //   6. Number → Tamil words
+  //   7. Smart pause insertion (commas for natural flow)
+  //   8. Sacred reference pauses
+  //   9. Final whitespace collapse
+  // ══════════════════════════════════════════════════════════════
 
   String _normalizeText(String text) {
-    String result = TamilTokenizer.normalize(text);
-    result = result.replaceAll(_hadithNumPattern, '');
-    result = result.replaceAllMapped(_parenAbbrevPattern, (m) => ' ${m.group(1)!} ');
+    // 1. Unicode cleanup (strip zero-width chars, NBSP, etc.)
+    String s = TamilTokenizer.normalize(text);
+
+    // 2. Double-punctuation normalization — prevent stutter
+    s = s.replaceAll('..', '.');
+    s = s.replaceAll(',,', ',');
+    s = s.replaceAll('!!', '!');
+    s = s.replaceAll('??', '?');
+    s = s.replaceAll(';;', ';');
+    s = s.replaceAll('::',':');
+
+    // 3. Strip hadith reference numbers (noise for TTS)
+    s = s.replaceAll(_hadithNumPattern, '');
+
+    // 4. Expand parenthesized abbreviations: நபி(ஸல்) → நபி ஸல்லல்லாஹு அலைஹி வசல்லம்
+    s = s.replaceAllMapped(_parenAbbrevPattern, (m) {
+      final abbr = m.group(1)!;
+      final expansion = _honorificExpansions[abbr] ?? abbr;
+      return ' $expansion';
+    });
+
+    // Expand standalone abbreviations (word-boundary aware)
     for (final entry in _honorificExpansions.entries) {
       final pattern = RegExp(
         r'(?<=[\s,;:.!?\u0964]|^)' + RegExp.escape(entry.key) + r'(?=[\s,;:.!?\u0964]|$)',
       );
-      result = result.replaceAll(pattern, entry.value);
+      s = s.replaceAll(pattern, entry.value);
     }
+
+    // 5. Arabic / Islamic pronunciation corrections
     for (final entry in _pronunciationFixes.entries) {
-      result = result.replaceAll(entry.key, entry.value);
+      s = s.replaceAll(entry.key, entry.value);
     }
-    for (final entry in _narrationPauses.entries) {
-      result = result.replaceAll(entry.key, entry.value);
+
+    // 5b. Long-aa vowel elongation — sustain Arabic vowels
+    //     Duplicate vowel sign so VITS holds the sound longer.
+    //     Apply only ONCE per word to prevent sing-song over-stretching.
+    for (final entry in _longVowelFixes.entries) {
+      s = s.replaceFirst(entry.key, entry.value);
     }
-    result = result.replaceAll(RegExp(r'\s{2,}'), ' ').trim();
-    return result;
+
+    // 6. Number → Tamil words (1–9999)
+    s = _convertNumbers(s);
+
+    // 7. Smart pause insertion — add commas for natural narration flow
+    //    AFTER narration words: கூறினார்கள் → கூறினார்கள்,
+    for (final word in _pauseAfterWords) {
+      // Only add comma if the word isn't already followed by punctuation
+      s = s.replaceAllMapped(
+        RegExp(RegExp.escape(word) + r'(?=[^\s,;:.!?])'),
+        (m) => '${m.group(0)},',
+      );
+      // Also handle: word + space + next-word (no comma)
+      s = s.replaceAllMapped(
+        RegExp(RegExp.escape(word) + r'\s+(?=[^\s,;:.!?])'),
+        (m) => '$word, ',
+      );
+    }
+
+    //    BEFORE contrast words: ...text ஆனால் → ...text, ஆனால்
+    for (final word in _pauseBeforeWords) {
+      // Add comma before if not already preceded by punctuation
+      s = s.replaceAllMapped(
+        RegExp(r'([^\s,;:.!?])\s+' + RegExp.escape(word)),
+        (m) => '${m.group(1)}, $word',
+      );
+    }
+
+    // 8. Sacred reference pauses — slight comma before Allah/Nabi/Rasool
+    for (final word in _sacredWords) {
+      // Add comma before sacred word if preceded by a regular word (not punctuation)
+      s = s.replaceAllMapped(
+        RegExp(r'([அ-ஹொ])\s+' + RegExp.escape(word) + r'(?=\s)'),
+        (m) => '${m.group(1)}, $word',
+      );
+    }
+
+    // 9. Arabic name consonant stops — comma after to prevent trailing "உ"
+    //    VITS adds epenthetic vowel after virama-ending Arabic names;
+    //    a comma forces a prosodic boundary that cleanly stops the consonant.
+    for (final name in _arabicNameStops) {
+      s = s.replaceAllMapped(
+        RegExp(RegExp.escape(name) + r'\s+(?=[^\s,;:.!?])'),
+        (m) => '$name, ',
+      );
+    }
+
+    // 10. நபி அவர்கள் respectful pause — slow narration for Prophet reference
+    s = s.replaceAllMapped(
+      RegExp(r'நபி அவர்கள்(?=[^\s,;:.!?]|\s+[^,])'),
+      (m) => 'நபி அவர்கள்,',
+    );
+
+    // 11. Emphasis words — add comma for stress in narration
+    for (final word in _emphasisWords) {
+      s = s.replaceAllMapped(
+        RegExp(RegExp.escape(word) + r'\s+(?=[^\s,;:.!?])'),
+        (m) => '$word, ',
+      );
+    }
+
+    // 12. Safety: collapse consecutive commas that earlier steps may create
+    //     (pause-after + sacred comma can produce ",," which breaks splitting)
+    s = s.replaceAll(RegExp(r',{2,}'), ',');
+
+    // 13. Final whitespace collapse
+    s = s.replaceAll(RegExp(r'\s{2,}'), ' ').trim();
+
+    return s;
   }
 
   // ── Sentence splitting ──
 
   List<String> _splitIntoSentences(String text) {
-    // Step 1: split on sentence-ending punctuation
-    final raw = text.split(RegExp(r'(?<=[.!?।\n])\s*'));
+    // Step 1: split on sentence-ending punctuation and colons
+    //   Colon is a primary split because hadith text uses "X கூறினார்:" pattern
+    final raw = text.split(RegExp(r'(?<=[.!?।:\n])\s*'));
     final List<String> result = [];
 
     for (final sentence in raw) {
       if (sentence.trim().isEmpty) continue;
+      // Skip punctuation-only fragments from comma insertion
+      if (RegExp(r'^[\s,;:.!?।]+$').hasMatch(sentence.trim())) continue;
       final tokens = _tokenizer.tokenize(sentence);
       if (tokens.length <= _maxTokensPerChunk) {
         result.add(sentence);
@@ -463,7 +848,7 @@ class _TtsWorker {
     try {
       final result = _bindings!.synthesize(
         engine, inputPtr, tokenIds.length,
-        0.667, 1.0, 0.8,  // noiseScale, lengthScale, noiseScaleW
+        0.667, 1.15, 0.8,  // noiseScale, lengthScale (1.15 = hadith narration pace), noiseScaleW
         outputDataPtr, outputLenPtr,
       );
 
@@ -505,10 +890,23 @@ class _TtsWorker {
     return false;
   }
 
+  /// Generate ultra-low room ambience (~−55 dB white noise).
+  /// Pure digital silence sounds unnatural to human ears;
+  /// faint room tone makes the brain perceive a real recording.
+  Float32List _roomTone(int ms) {
+    final samples = (_sampleRate * ms / 1000).toInt();
+    final out = Float32List(samples);
+    for (int i = 0; i < samples; i++) {
+      out[i] = (_rng.nextDouble() - 0.5) * 0.0008;
+    }
+    return out;
+  }
+
   Float32List _appendSilence(Float32List audio, int ms) {
-    final silenceSamples = (_sampleRate * ms / 1000).toInt();
-    final result = Float32List(audio.length + silenceSamples);
+    final tone = _roomTone(ms);
+    final result = Float32List(audio.length + tone.length);
     result.setRange(0, audio.length, audio);
+    result.setRange(audio.length, result.length, tone);
     return result;
   }
 }
