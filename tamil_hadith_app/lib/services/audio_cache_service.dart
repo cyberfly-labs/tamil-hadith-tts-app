@@ -15,9 +15,9 @@ import 'package:path_provider/path_provider.dart';
 class AudioCacheService {
   String? _audioDir;
 
-  /// In-flight write futures keyed by hadith number.
+  /// In-flight write futures keyed by cache key.
   /// Prevents concurrent writes to the same file (double-tap crash).
-  final Map<int, Future<String>> _writeLocks = {};
+  final Map<String, Future<String>> _writeLocks = {};
 
   /// Maximum cache size in bytes (1 GB). Oldest files are evicted when exceeded.
   static const int maxCacheBytes = 1024 * 1024 * 1024;
@@ -56,8 +56,19 @@ class AudioCacheService {
     if (!file.existsSync()) return null;
 
     // Corruption guard: a valid WAV must be > 1 KB (header + some audio)
-    if (file.lengthSync() < 1000) {
+    final len = file.lengthSync();
+    if (len < 1000) {
       debugPrint('AudioCache: Corrupt file for #$hadithNumber — deleting');
+      try { file.deleteSync(); } catch (_) {}
+      return null;
+    }
+
+    // Additional guard: reject extremely short audio (< 0.5s)
+    // WAV header is 44 bytes, PCM 16-bit mono = 2 bytes/sample @ 16kHz
+    const int minSamples = 16000 ~/ 2; // 0.5 seconds
+    const int minDataBytes = minSamples * 2;
+    if (len < 44 + minDataBytes) {
+      debugPrint('AudioCache: Too-short audio for #$hadithNumber (${len} bytes) — deleting');
       try { file.deleteSync(); } catch (_) {}
       return null;
     }
@@ -77,41 +88,87 @@ class AudioCacheService {
     return count;
   }
 
-  /// Save PCM float32 audio as a WAV file in the permanent store.
-  /// Uses a per-hadith write lock so double-taps never corrupt the file.
-  Future<String> saveToCache(int hadithNumber, Float32List pcmData, {int sampleRate = 16000}) async {
-    // If a write for this hadith is already in flight, return its future.
-    if (_writeLocks.containsKey(hadithNumber)) {
-      return _writeLocks[hadithNumber]!;
+  // ════════════════════════════════════════════════════════════
+  // Generic key-based cache (used for Quran verses, etc.)
+  // ════════════════════════════════════════════════════════════
+
+  /// Get cache file path for a string key (e.g. "quran_2_255").
+  String _cachePathByKey(String key) {
+    return p.join(_audioDir!, '$key.wav');
+  }
+
+  /// Check if audio is cached for a given string key.
+  bool isCachedByKey(String key) {
+    if (_audioDir == null) return false;
+    return File(_cachePathByKey(key)).existsSync();
+  }
+
+  /// Get cached audio file path by key, or null if not cached.
+  /// Same corruption guards as [getCachedPath].
+  String? getCachedPathByKey(String key) {
+    if (_audioDir == null) return null;
+    final file = File(_cachePathByKey(key));
+    if (!file.existsSync()) return null;
+
+    final len = file.lengthSync();
+    if (len < 1000) {
+      debugPrint('AudioCache: Corrupt file for key $key — deleting');
+      try { file.deleteSync(); } catch (_) {}
+      return null;
     }
 
-    final future = _saveInternal(hadithNumber, pcmData, sampleRate);
-    _writeLocks[hadithNumber] = future;
+    const int minSamples = 16000 ~/ 2;
+    const int minDataBytes = minSamples * 2;
+    if (len < 44 + minDataBytes) {
+      debugPrint('AudioCache: Too-short audio for key $key ($len bytes) — deleting');
+      try { file.deleteSync(); } catch (_) {}
+      return null;
+    }
+
+    return file.path;
+  }
+
+  /// Save PCM float32 audio to cache with a string key.
+  Future<String> saveToCacheByKey(String key, Float32List pcmData, {int sampleRate = 16000}) async {
+    if (_writeLocks.containsKey(key)) {
+      return _writeLocks[key]!;
+    }
+
+    final future = _saveInternalByKey(key, pcmData, sampleRate);
+    _writeLocks[key] = future;
 
     try {
       final path = await future;
       return path;
     } finally {
-      _writeLocks.remove(hadithNumber);
+      _writeLocks.remove(key);
     }
   }
 
-  /// Internal save — writes WAV with flush, then enforces cache size limit.
-  Future<String> _saveInternal(int hadithNumber, Float32List pcmData, int sampleRate) async {
+  Future<String> _saveInternalByKey(String key, Float32List pcmData, int sampleRate) async {
     await _ensureDir();
 
     final wavBytes = pcmToWav(pcmData, sampleRate);
-    final file = File(_cachePath(hadithNumber));
+    final file = File(_cachePathByKey(key));
     await file.writeAsBytes(wavBytes, flush: true);
-    debugPrint('AudioCache: Saved hadith #$hadithNumber '
+    debugPrint('AudioCache: Saved key=$key '
         '(${pcmData.length} samples, ${(pcmData.length / sampleRate).toStringAsFixed(1)}s)');
 
-    // Enforce cache size limit in the background
     _enforceCacheLimit().catchError((e) {
       debugPrint('AudioCache: eviction error: $e');
     });
 
     return file.path;
+  }
+
+  // ════════════════════════════════════════════════════════════
+  // Hadith-specific (legacy, delegates to key-based)
+  // ════════════════════════════════════════════════════════════
+
+  /// Save PCM float32 audio as a WAV file in the permanent store.
+  /// Uses a per-hadith write lock so double-taps never corrupt the file.
+  Future<String> saveToCache(int hadithNumber, Float32List pcmData, {int sampleRate = 16000}) async {
+    return saveToCacheByKey('$hadithNumber', pcmData, sampleRate: sampleRate);
   }
 
   /// Evict oldest cached files until total size is below 80% of [maxCacheBytes].

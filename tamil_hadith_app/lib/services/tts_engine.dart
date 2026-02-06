@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'tokenizer.dart';
 import 'tts_isolate.dart';
+import 'model_download_service.dart';
 
 /// VITS inference parameters from mms-tts-tam config.json
 class VitsConfig {
@@ -48,17 +49,20 @@ class TtsEngine {
       await _tokenizer.load();
       debugPrint('TTS Tokenizer loaded: ${_tokenizer.vocabSize} tokens');
 
-      final dir = await getApplicationDocumentsDirectory();
-      final modelPath = p.join(dir.path, 'models', 'model_fp32.mnn');
+      // Use whichever model the user has selected (persisted in prefs)
+      final downloadService = ModelDownloadService();
+      await downloadService.initialize();
+      final path = await downloadService.modelPath;
 
-      if (!File(modelPath).existsSync()) {
-        debugPrint('TTS: Model file not found at $modelPath');
+      if (!File(path).existsSync()) {
+        debugPrint('TTS: Model file not found at $path');
         _isInitialized = true;
         return;
       }
-      debugPrint('TTS Model found at: $modelPath');
+      debugPrint('TTS Model found at: $path');
 
       // Copy tokens.txt from assets to documents so the isolate can read it
+      final dir = await getApplicationDocumentsDirectory();
       final tokensPath = p.join(dir.path, 'models', 'tokens.txt');
       if (!File(tokensPath).existsSync()) {
         final data = await rootBundle.loadString('assets/models/tokens.txt');
@@ -66,7 +70,7 @@ class TtsEngine {
       }
 
       // Spawn the background isolate and init the engine inside it
-      final ready = await _runner.start(modelPath, tokensPath);
+      final ready = await _runner.start(path, tokensPath);
       debugPrint('TTS Engine initialized in background isolate '
           '(native=${ready ? "yes" : "no"})');
 

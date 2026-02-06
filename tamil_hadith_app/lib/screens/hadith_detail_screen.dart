@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -31,6 +32,9 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
   static final AudioCacheService audioCache = sharedAudioCache;
   static final BookmarkService _bookmarkService = BookmarkService();
   static bool _servicesInitialized = false;
+  static String? _currentlyLoadedHadith; // Track which hadith audio is loaded
+
+  StreamSubscription<bool>? _playingSub;
 
   bool _isSynthesizing = false;
   bool _isPlaying = false;
@@ -44,7 +48,7 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
   void initState() {
     super.initState();
     _initServices();
-    _audioPlayer.playingStream.listen((playing) {
+    _playingSub = _audioPlayer.playingStream.listen((playing) {
       if (mounted) {
         setState(() => _isPlaying = playing);
       }
@@ -80,7 +84,7 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
             actions: [
               IconButton(
                 icon: Icon(
-                  _bookmarkService.isBookmarked(widget.hadith.hadithNumber)
+                  _bookmarkService.isBookmarked(widget.hadith.cacheKey)
                       ? Icons.bookmark_rounded
                       : Icons.bookmark_outline_rounded,
                 ),
@@ -119,6 +123,11 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
                       padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                       child: Row(
                         children: [
+                          _InfoChip(
+                            icon: Icons.library_books_rounded,
+                            label: widget.hadith.collection.shortName,
+                          ),
+                          const SizedBox(width: 8),
                           _InfoChip(
                             icon: Icons.auto_stories_rounded,
                             label: widget.hadith.book,
@@ -160,6 +169,33 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
                       height: 1.5,
                     ),
                   ),
+                ),
+              ),
+            ),
+
+          // ── Narrator (Bukhari only) ──
+          if (widget.hadith.narratedBy.isNotEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                child: Row(
+                  children: [
+                    Icon(Icons.person_rounded,
+                        size: 16,
+                        color: cs.onSurface.withValues(alpha: 0.45)),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        widget.hadith.narratedBy,
+                        style: TextStyle(
+                          fontSize: _fontSize - 2,
+                          fontStyle: FontStyle.italic,
+                          color: cs.onSurface.withValues(alpha: 0.6),
+                          height: 1.5,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -325,12 +361,17 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
       return;
     }
 
-    // If paused (player has source), resume
-    if (_audioPlayer.player.processingState != ProcessingState.idle &&
+    // If paused AND same hadith, resume from where we left off
+    if (_currentlyLoadedHadith == widget.hadith.cacheKey &&
+        _audioPlayer.player.processingState != ProcessingState.idle &&
         _audioPlayer.player.processingState != ProcessingState.completed) {
       await _audioPlayer.resume();
       return;
     }
+
+    // Different hadith or fresh start — stop any old playback
+    await _audioPlayer.stop();
+    _currentlyLoadedHadith = widget.hadith.cacheKey;
 
     // ── Model-not-downloaded guard ──
     if (!ttsEngine.isNativeAvailable) {
@@ -348,12 +389,12 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
       return;
     }
 
-    final hadithNum = widget.hadith.hadithNumber;
+    final hadithKey = widget.hadith.cacheKey;
 
     // ── Check audio cache first ──
-    final cachedPath = audioCache.getCachedPath(hadithNum);
+    final cachedPath = audioCache.getCachedPathByKey(hadithKey);
     if (cachedPath != null) {
-      debugPrint('AudioCache: Hit for hadith #$hadithNum');
+      debugPrint('AudioCache: Hit for $hadithKey');
       setState(() => _statusText = 'தற்காலிக சேமிப்பிலிருந்து ஒலிக்கிறது...');
       await _audioPlayer.playFromFile(cachedPath);
       return;
@@ -367,6 +408,7 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
 
     try {
       final text = widget.hadith.textTamil;
+      debugPrint('TTS: Starting synthesis for $hadithKey (${text.length} chars)');
 
       // Start the streaming playlist
       await _audioPlayer.startStreaming();
@@ -377,11 +419,13 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
 
       await for (final chunkAudio in ttsEngine.synthesizeStreaming(text)) {
         if (!mounted) {
+          debugPrint('TTS: Widget unmounted during synthesis, cancelling');
           ttsEngine.cancelSynthesis();
           break;
         }
 
         chunkCount++;
+        debugPrint('TTS: Chunk #$chunkCount received (${chunkAudio.length} samples, ${(chunkAudio.length / 16000).toStringAsFixed(2)}s)');
         allChunks.add(chunkAudio);
         await _audioPlayer.addStreamingChunk(chunkAudio);
 
@@ -400,6 +444,8 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
         }
       }
 
+      debugPrint('TTS: Synthesis loop ended. chunkCount=$chunkCount mounted=$mounted');
+
       if (mounted && chunkCount == 0) {
         setState(() {
           _statusText = 'ஒலிப்பதிவு தோல்வி';
@@ -408,6 +454,9 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
       } else if (mounted) {
         setState(() => _statusText = 'ஒலிக்கிறது...');
       }
+
+      // Signal: no more chunks coming — player will drain the queue
+      _audioPlayer.finishStreaming();
 
       // ── Save to cache in background ──
       if (allChunks.isNotEmpty) {
@@ -423,10 +472,10 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
         allChunks.clear();
 
         // Fire-and-forget: save to disk cache
-        audioCache.saveToCache(hadithNum, combined).then((_) {
-          debugPrint('AudioCache: Saved hadith #$hadithNum to cache');
+        audioCache.saveToCacheByKey(hadithKey, combined).then((_) {
+          debugPrint('AudioCache: Saved $hadithKey to cache');
         }).catchError((e) {
-          debugPrint('AudioCache: Failed to save hadith #$hadithNum: $e');
+          debugPrint('AudioCache: Failed to save $hadithKey: $e');
         });
       }
 
@@ -461,6 +510,12 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
     }
   }
 
+  @override
+  void dispose() {
+    _playingSub?.cancel();
+    super.dispose();
+  }
+
   void _onSpeedChange(double speed) {
     setState(() => _playbackSpeed = speed);
     _audioPlayer.setSpeed(speed);
@@ -469,6 +524,8 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
   Future<void> _toggleBookmark() async {
     final hadith = widget.hadith;
     final nowBookmarked = await _bookmarkService.toggleBookmark(
+      key: hadith.cacheKey,
+      collection: hadith.collection.name,
       hadithNumber: hadith.hadithNumber,
       book: hadith.book,
       chapter: hadith.chapter,

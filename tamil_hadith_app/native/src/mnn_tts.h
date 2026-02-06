@@ -50,7 +50,9 @@ TTS_ErrorCode tts_synthesize(
     size_t* output_len
 );
 
-/// Free output audio buffer allocated by tts_synthesize
+/// No-op (kept for ABI compatibility).
+/// Output buffer is now engine-owned; callers must copy data before
+/// the next tts_synthesize call on the same engine.
 void tts_free_output(float* output_data);
 
 /// Get the last error message

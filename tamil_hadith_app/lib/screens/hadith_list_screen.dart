@@ -4,15 +4,19 @@ import '../models/hadith.dart';
 import '../services/hadith_database.dart';
 import 'hadith_detail_screen.dart';
 
-/// Screen showing list of hadiths for a specific book
+/// Screen showing list of hadiths for a specific book in a collection
 class HadithListScreen extends StatefulWidget {
   final HadithDatabase database;
-  final String book;
+  final HadithCollection collection;
+  final int bookNumber;
+  final String bookTitle;
 
   const HadithListScreen({
     super.key,
     required this.database,
-    required this.book,
+    required this.collection,
+    required this.bookNumber,
+    required this.bookTitle,
   });
 
   @override
@@ -42,9 +46,10 @@ class _HadithListScreenState extends State<HadithListScreen> {
 
   Future<void> _loadInitial() async {
     final hadiths = await widget.database.getHadithsPaginated(
+      collection: widget.collection,
+      bookNumber: widget.bookNumber,
       offset: 0,
       limit: _pageSize,
-      book: widget.book,
     );
     setState(() {
       _hadiths.addAll(hadiths);
@@ -65,9 +70,10 @@ class _HadithListScreenState extends State<HadithListScreen> {
   Future<void> _loadMore() async {
     setState(() => _isLoadingMore = true);
     final hadiths = await widget.database.getHadithsPaginated(
+      collection: widget.collection,
+      bookNumber: widget.bookNumber,
       offset: _hadiths.length,
       limit: _pageSize,
-      book: widget.book,
     );
     setState(() {
       _hadiths.addAll(hadiths);
@@ -82,7 +88,7 @@ class _HadithListScreenState extends State<HadithListScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.book),
+        title: Text(widget.bookTitle),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(32),
           child: Padding(
@@ -97,7 +103,7 @@ class _HadithListScreenState extends State<HadithListScreen> {
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
-                    '${_hadiths.length}${_hasMore ? '+' : ''} ஹதீஸ்கள்',
+                    '${widget.collection.shortName} · ${_hadiths.length}${_hasMore ? '+' : ''} ஹதீஸ்கள்',
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,

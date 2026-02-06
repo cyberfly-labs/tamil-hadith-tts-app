@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../models/hadith.dart';
 import 'audio_cache_service.dart';
 import 'hadith_database.dart';
 import 'tts_engine.dart';
@@ -35,8 +36,10 @@ class PreCacheService {
 
       await cache.initialize();
 
-      // Fetch the first N hadiths from the database
+      // Fetch the first N hadiths from Bukhari book 1
       final hadiths = await db.getHadithsPaginated(
+        collection: HadithCollection.bukhari,
+        bookNumber: 1,
         offset: 0,
         limit: preCacheCount,
       );
@@ -44,7 +47,7 @@ class PreCacheService {
       int cached = 0;
       for (final hadith in hadiths) {
         // Skip if already cached
-        if (cache.isCached(hadith.hadithNumber)) {
+        if (cache.isCachedByKey(hadith.cacheKey)) {
           cached++;
           continue;
         }
@@ -52,13 +55,13 @@ class PreCacheService {
         try {
           final audio = await engine.synthesize(hadith.textTamil);
           if (audio != null && audio.isNotEmpty) {
-            await cache.saveToCache(hadith.hadithNumber, audio);
+            await cache.saveToCacheByKey(hadith.cacheKey, audio);
             cached++;
-            debugPrint('PreCache: ${cached}/$preCacheCount '
-                '(hadith #${hadith.hadithNumber})');
+            debugPrint('PreCache: $cached/$preCacheCount '
+                '(${hadith.cacheKey})');
           }
         } catch (e) {
-          debugPrint('PreCache: failed hadith #${hadith.hadithNumber}: $e');
+          debugPrint('PreCache: failed ${hadith.cacheKey}: $e');
           // Continue with the next one — don't break the whole loop
         }
 

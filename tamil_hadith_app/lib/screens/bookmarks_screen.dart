@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 
 import '../models/hadith.dart';
 import '../services/bookmark_service.dart';
+import '../services/hadith_database.dart';
 import 'hadith_detail_screen.dart';
 
 /// Screen showing all bookmarked hadiths
 class BookmarksScreen extends StatefulWidget {
-  const BookmarksScreen({super.key});
+  final HadithDatabase database;
+
+  const BookmarksScreen({super.key, required this.database});
 
   @override
   State<BookmarksScreen> createState() => _BookmarksScreenState();
@@ -36,15 +39,31 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
 
   Future<void> _loadBookmarks() async {
     final rows = await _bookmarkService.getBookmarks();
-    final hadiths = rows.map((row) {
-      return Hadith(
-        id: 0, // Not needed for display
-        hadithNumber: row['hadith_number'] as int,
-        book: row['book'] as String? ?? '',
-        chapter: row['chapter'] as String? ?? '',
-        textTamil: row['text_tamil'] as String? ?? '',
-      );
-    }).toList();
+    final List<Hadith> hadiths = [];
+    for (final row in rows) {
+      final collectionStr = row['collection'] as String? ?? 'bukhari';
+      final collection = collectionStr == 'muslim'
+          ? HadithCollection.muslim
+          : HadithCollection.bukhari;
+      final hadithNumber = row['hadith_number'] as int;
+
+      // Try to load the full hadith from the database
+      final fullHadith =
+          await widget.database.getHadith(collection, hadithNumber);
+      if (fullHadith != null) {
+        hadiths.add(fullHadith);
+      } else {
+        // Fallback: construct from bookmark data
+        hadiths.add(Hadith(
+          hadithNumber: hadithNumber,
+          collection: collection,
+          content: row['text_tamil'] as String? ?? '',
+          bookTitle: row['book'] as String? ?? '',
+          bookNumber: 0,
+          lessionHeading: row['chapter'] as String? ?? '',
+        ));
+      }
+    }
     if (mounted) {
       setState(() {
         _bookmarks = hadiths;
@@ -109,6 +128,8 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
                       },
                       onRemove: () async {
                         await _bookmarkService.toggleBookmark(
+                          key: hadith.cacheKey,
+                          collection: hadith.collection.name,
                           hadithNumber: hadith.hadithNumber,
                           book: hadith.book,
                         );
@@ -168,13 +189,37 @@ class _BookmarkCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      hadith.book,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: cs.primary,
-                      ),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: cs.tertiaryContainer,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            hadith.collection.shortName,
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: cs.onTertiaryContainer,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            hadith.book,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: cs.primary,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 4),
                     Text(

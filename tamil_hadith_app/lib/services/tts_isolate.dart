@@ -201,7 +201,7 @@ class _TtsWorker {
 
   bool get _isNativeAvailable => _enginePtr != null && _enginePtr != nullptr;
 
-  static const int _maxTokensPerChunk = 700;
+  static const int _maxTokensPerChunk = 250;
   static const int _crossfadeSamples = 400;
   static const double _silenceThreshold = 0.01;
 
@@ -270,7 +270,8 @@ class _TtsWorker {
       // Initialize native engine via FFI
       _bindings = MnnTtsBindings();
       final pathPtr = modelPath.toNativeUtf8();
-      final rawPtr = _bindings!.createEngine(pathPtr, 4);
+      // 2 threads: saves battery & heat for a reading app (not latency-critical)
+      final rawPtr = _bindings!.createEngine(pathPtr, 2);
       calloc.free(pathPtr);
 
       if (rawPtr == nullptr) {
@@ -298,24 +299,15 @@ class _TtsWorker {
       }
 
       final normalizedText = _normalizeText(text);
-      final tokenIds = _tokenizer.tokenize(normalizedText);
-      if (tokenIds.isEmpty) {
+      if (normalizedText.isEmpty) {
+        debugPrint('TTS-Isolate: normalized text is EMPTY');
         _mainPort.send(TtsDone(requestId));
         return;
       }
 
-      // Short text — single chunk
-      if (tokenIds.length <= _maxTokensPerChunk) {
-        final audio = _synthesizeNative(tokenIds);
-        if (audio != null && audio.isNotEmpty) {
-          _mainPort.send(TtsChunk(requestId, audio));
-        }
-        _mainPort.send(TtsDone(requestId));
-        return;
-      }
-
-      // Long text — stream chunk-by-chunk
+      // Always stream chunk-by-chunk for responsive playback
       final sentences = _splitIntoSentences(normalizedText);
+      debugPrint('TTS-Isolate: ${sentences.length} chunks from ${normalizedText.length} chars');
       Float32List? prevTail;
 
       for (int i = 0; i < sentences.length; i++) {
@@ -326,11 +318,19 @@ class _TtsWorker {
         final chunkTokens = _tokenizer.tokenize(chunk);
         if (chunkTokens.isEmpty) continue;
 
+        debugPrint('TTS-Isolate: chunk ${i+1}/${sentences.length} (${chunkTokens.length} tokens)');
         final raw = _synthesizeNative(chunkTokens);
-        if (raw == null || raw.isEmpty) continue;
+        if (raw == null || raw.isEmpty) {
+          debugPrint('TTS-Isolate: chunk ${i+1} synthesize returned null/empty');
+          continue;
+        }
 
         final trimmed = _trimSilence(raw);
-        if (trimmed.isEmpty) continue;
+        if (trimmed.isEmpty) {
+          debugPrint('TTS-Isolate: chunk ${i+1} all silence after trim');
+          continue;
+        }
+        debugPrint('TTS-Isolate: chunk ${i+1} raw=${raw.length} trimmed=${trimmed.length} (${(trimmed.length/16000).toStringAsFixed(2)}s)');
 
         if (prevTail != null) {
           final overlap = min(_crossfadeSamples, min(prevTail.length, trimmed.length));
@@ -390,31 +390,63 @@ class _TtsWorker {
   // ── Sentence splitting ──
 
   List<String> _splitIntoSentences(String text) {
+    // Step 1: split on sentence-ending punctuation
     final raw = text.split(RegExp(r'(?<=[.!?।\n])\s*'));
     final List<String> result = [];
+
     for (final sentence in raw) {
       if (sentence.trim().isEmpty) continue;
       final tokens = _tokenizer.tokenize(sentence);
       if (tokens.length <= _maxTokensPerChunk) {
         result.add(sentence);
-      } else {
-        final parts = sentence.split(RegExp(r'(?<=[,;:])\s*'));
-        final StringBuffer buf = StringBuffer();
-        int bufTokens = 0;
-        for (final part in parts) {
-          final pTokens = _tokenizer.tokenize(part).length;
-          if (bufTokens + pTokens > _maxTokensPerChunk && bufTokens > 0) {
-            result.add(buf.toString());
-            buf.clear();
-            bufTokens = 0;
-          }
-          buf.write(part);
-          bufTokens += pTokens;
+        continue;
+      }
+
+      // Step 2: split long sentences on commas / semicolons / colons
+      final parts = sentence.split(RegExp(r'(?<=[,;:])\s*'));
+      final StringBuffer buf = StringBuffer();
+      int bufTokens = 0;
+      for (final part in parts) {
+        final pTokens = _tokenizer.tokenize(part).length;
+        if (bufTokens + pTokens > _maxTokensPerChunk && bufTokens > 0) {
+          result.add(buf.toString());
+          buf.clear();
+          bufTokens = 0;
         }
-        if (buf.isNotEmpty) result.add(buf.toString());
+        buf.write(part);
+        bufTokens += pTokens;
+      }
+      if (buf.isNotEmpty) {
+        final remaining = buf.toString();
+        final remTokens = _tokenizer.tokenize(remaining).length;
+        if (remTokens <= _maxTokensPerChunk) {
+          result.add(remaining);
+        } else {
+          // Step 3: split on word boundaries (spaces)
+          _splitByWords(remaining, result);
+        }
       }
     }
     return result;
+  }
+
+  /// Final fallback: split text on spaces to stay within chunk limit.
+  void _splitByWords(String text, List<String> out) {
+    final words = text.split(' ');
+    final StringBuffer buf = StringBuffer();
+    int bufTokens = 0;
+    for (final word in words) {
+      final wTokens = _tokenizer.tokenize(word).length;
+      if (bufTokens + wTokens > _maxTokensPerChunk && bufTokens > 0) {
+        out.add(buf.toString().trim());
+        buf.clear();
+        bufTokens = 0;
+      }
+      if (buf.isNotEmpty) buf.write(' ');
+      buf.write(word);
+      bufTokens += wTokens;
+    }
+    if (buf.isNotEmpty) out.add(buf.toString().trim());
   }
 
   // ── Native FFI inference ──
@@ -441,7 +473,7 @@ class _TtsWorker {
         if (outputLen > 0 && outputPtr != nullptr) {
           final nativeView = outputPtr.asTypedList(outputLen);
           final audioData = Float32List.fromList(nativeView);
-          _bindings!.freeOutput(outputPtr);
+          // No freeOutput call needed — buffer is engine-owned (reusable).
           return audioData;
         }
       }

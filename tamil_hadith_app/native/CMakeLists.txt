@@ -39,6 +39,22 @@ add_subdirectory(${MNN_DIR} ${CMAKE_BINARY_DIR}/MNN)
 # Include MNN headers
 include_directories(${MNN_DIR}/include)
 
+# ── Aggressive compile flags for real-time TTS ──
+if(CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -ffast-math -funsafe-math-optimizations -flto")
+    set(CMAKE_C_FLAGS_RELEASE   "${CMAKE_C_FLAGS_RELEASE}   -O3 -ffast-math -funsafe-math-optimizations -flto")
+endif()
+
+if(ANDROID)
+    # NEON is auto-enabled on aarch64, but explicit for armv7
+    if(CMAKE_ANDROID_ARCH_ABI STREQUAL "armeabi-v7a")
+        add_compile_options(-mfpu=neon)
+    endif()
+    # LTO for all builds on Android
+    add_compile_options(-flto)
+    add_link_options(-flto)
+endif()
+
 # Build our TTS wrapper as a shared library
 add_library(mnn_tts SHARED src/mnn_tts.cpp)
 

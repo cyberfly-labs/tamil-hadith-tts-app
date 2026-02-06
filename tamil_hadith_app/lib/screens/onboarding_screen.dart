@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import '../services/model_download_service.dart';
 
 /// Onboarding screen shown on first launch.
-/// Downloads the TTS model (~109 MB) from HuggingFace with progress UI.
+/// Downloads the TTS model (~28 MB INT8) from HuggingFace with progress UI.
 class OnboardingScreen extends StatefulWidget {
   /// Called when the model is ready and onboarding is complete.
   final VoidCallback onComplete;
@@ -133,185 +133,195 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           ),
         ),
         child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 36),
-            child: Column(
-              children: [
-                const Spacer(flex: 3),
-
-                // ── Animated branding ──
-                ScaleTransition(
-                  scale: _pulseAnim,
-                  child: Container(
-                    width: 100,
-                    height: 100,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          cs.primary,
-                          cs.primary.withValues(alpha: 0.7),
-                        ],
-                      ),
-                      borderRadius: BorderRadius.circular(28),
-                      boxShadow: [
-                        BoxShadow(
-                          color: cs.primary.withValues(alpha: 0.3),
-                          blurRadius: 24,
-                          offset: const Offset(0, 8),
-                        ),
-                      ],
-                    ),
-                    child: const Icon(
-                      Icons.auto_stories_rounded,
-                      size: 44,
-                      color: Colors.white,
-                    ),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              return SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 36),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: constraints.maxHeight,
                   ),
-                ),
-                const SizedBox(height: 28),
-
-                Text(
-                  'புகாரி ஹதீஸ்',
-                  style: TextStyle(
-                    fontSize: 30,
-                    fontWeight: FontWeight.bold,
-                    color: cs.onSurface,
-                    letterSpacing: 0.3,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'AI தமிழ் ஒலி பதிப்பு',
-                  style: TextStyle(
-                    fontSize: 15,
-                    color: cs.onSurface.withValues(alpha: 0.5),
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-
-                const Spacer(flex: 2),
-
-                // ── Download states ──
-                if (_state == _DownloadState.idle)
-                  CircularProgressIndicator(
-                    strokeWidth: 3,
-                    color: cs.primary,
-                  ),
-
-                if (_state == _DownloadState.downloading) ...[
-                  // Feature highlights
-                  _FeatureRow(
-                    icon: Icons.wifi_off_rounded,
-                    text: 'இணையம் இல்லாமல் வேலை செய்யும்',
-                    color: cs,
-                  ),
-                  const SizedBox(height: 10),
-                  _FeatureRow(
-                    icon: Icons.record_voice_over_rounded,
-                    text: 'AI ஒலி - முதல் முறை மட்டும் தேவை',
-                    color: cs,
-                  ),
-                  const SizedBox(height: 24),
-
-                  // Progress bar
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
-                    child: LinearProgressIndicator(
-                      value: _totalBytes > 0 ? _progress : null,
-                      minHeight: 10,
-                      backgroundColor: cs.surfaceContainerHighest,
-                      color: cs.primary,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Percentage + size text
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text(
-                        _statusText,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: cs.onSurface,
+                      const SizedBox(height: 48),
+
+                      // ── Animated branding ──
+                      ScaleTransition(
+                        scale: _pulseAnim,
+                        child: Container(
+                          width: 100,
+                          height: 100,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                cs.primary,
+                                cs.primary.withValues(alpha: 0.7),
+                              ],
+                            ),
+                            borderRadius: BorderRadius.circular(28),
+                            boxShadow: [
+                              BoxShadow(
+                                color: cs.primary.withValues(alpha: 0.3),
+                                blurRadius: 24,
+                                offset: const Offset(0, 8),
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.auto_stories_rounded,
+                            size: 44,
+                            color: Colors.white,
+                          ),
                         ),
                       ),
-                      if (_totalBytes > 0)
-                        Text(
-                          '${(_progress * 100).toInt()}%',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
+                      const SizedBox(height: 28),
+
+                      Text(
+                        'புகாரி ஹதீஸ்',
+                        style: TextStyle(
+                          fontSize: 30,
+                          fontWeight: FontWeight.bold,
+                          color: cs.onSurface,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'AI தமிழ் ஒலி பதிப்பு',
+                        style: TextStyle(
+                          fontSize: 15,
+                          color: cs.onSurface.withValues(alpha: 0.5),
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+
+                      const SizedBox(height: 40),
+
+                      // ── Download states ──
+                      if (_state == _DownloadState.idle)
+                        CircularProgressIndicator(
+                          strokeWidth: 3,
+                          color: cs.primary,
+                        ),
+
+                      if (_state == _DownloadState.downloading) ...[
+                        // Feature highlights
+                        _FeatureRow(
+                          icon: Icons.wifi_off_rounded,
+                          text: 'இணையம் இல்லாமல் வேலை செய்யும்',
+                          color: cs,
+                        ),
+                        const SizedBox(height: 10),
+                        _FeatureRow(
+                          icon: Icons.record_voice_over_rounded,
+                          text: 'AI ஒலி - முதல் முறை மட்டும் தேவை',
+                          color: cs,
+                        ),
+                        const SizedBox(height: 24),
+
+                        // Progress bar
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: LinearProgressIndicator(
+                            value: _totalBytes > 0 ? _progress : null,
+                            minHeight: 10,
+                            backgroundColor: cs.surfaceContainerHighest,
                             color: cs.primary,
                           ),
                         ),
+                        const SizedBox(height: 12),
+
+                        // Percentage + size text
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              _statusText,
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: cs.onSurface,
+                              ),
+                            ),
+                            if (_totalBytes > 0)
+                              Text(
+                                '${(_progress * 100).toInt()}%',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: cs.primary,
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'ஒலி AI மாதிரி (~28 MB)',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: cs.onSurface.withValues(alpha: 0.35),
+                          ),
+                        ),
+                      ],
+
+                      if (_state == _DownloadState.complete) ...[
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.green.withValues(alpha: 0.1),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.check_rounded,
+                              size: 40, color: Colors.green),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          _statusText,
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w700,
+                            color: cs.primary,
+                          ),
+                        ),
+                      ],
+
+                      if (_state == _DownloadState.error) ...[
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: cs.error.withValues(alpha: 0.1),
+                            shape: BoxShape.circle,
+                          ),
+                          child:
+                              Icon(Icons.cloud_off_rounded, size: 40, color: cs.error),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          _errorText,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 13, color: cs.error, height: 1.5),
+                        ),
+                        const SizedBox(height: 20),
+                        FilledButton.icon(
+                          onPressed: _startDownload,
+                          icon: const Icon(Icons.refresh_rounded),
+                          label: const Text('மீண்டும் முயற்சி'),
+                          style: FilledButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 24, vertical: 12),
+                          ),
+                        ),
+                      ],
+
+                      const SizedBox(height: 48),
                     ],
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'ஒலி AI மாதிரி (~109 MB)',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: cs.onSurface.withValues(alpha: 0.35),
-                    ),
-                  ),
-                ],
-
-                if (_state == _DownloadState.complete) ...[
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.green.withValues(alpha: 0.1),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.check_rounded,
-                        size: 40, color: Colors.green),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    _statusText,
-                    style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                      color: cs.primary,
-                    ),
-                  ),
-                ],
-
-                if (_state == _DownloadState.error) ...[
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: cs.error.withValues(alpha: 0.1),
-                      shape: BoxShape.circle,
-                    ),
-                    child:
-                        Icon(Icons.cloud_off_rounded, size: 40, color: cs.error),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    _errorText,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 13, color: cs.error, height: 1.5),
-                  ),
-                  const SizedBox(height: 20),
-                  FilledButton.icon(
-                    onPressed: _startDownload,
-                    icon: const Icon(Icons.refresh_rounded),
-                    label: const Text('மீண்டும் முயற்சி'),
-                    style: FilledButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 24, vertical: 12),
-                    ),
-                  ),
-                ],
-
-                const Spacer(flex: 3),
-              ],
-            ),
+                ),
+              );
+            },
           ),
         ),
       ),

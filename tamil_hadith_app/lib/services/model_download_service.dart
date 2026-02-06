@@ -4,28 +4,86 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-/// Downloads and caches the MNN TTS model from HuggingFace.
+// ══════════════════════════════════════════════════════════════
+// Model variant definitions
+// ══════════════════════════════════════════════════════════════
+
+/// Available TTS model variants, ordered by size.
+enum TtsModelVariant {
+  /// INT8 quantised — smallest, fastest, slightly lower quality.
+  int8(
+    fileName: 'model_int8.mnn',
+    label: 'சிறிய (INT8)',
+    description: 'வேகமான, குறைந்த அளவு',
+    sizeMB: 28,
+    url: 'https://huggingface.co/developerabu/mms-tts-tam-mnn/resolve/main/model_int8.mnn',
+  ),
+
+  /// FP16+INT8 hybrid — balanced quality / size.
+  fp16Int8(
+    fileName: 'model_fp16_int8.mnn',
+    label: 'நடுத்தர (FP16+INT8)',
+    description: 'சிறந்த தரம், நடுத்தர அளவு',
+    sizeMB: 55,
+    url: 'https://huggingface.co/developerabu/mms-tts-tam-mnn/resolve/main/model_fp16_int8.mnn',
+  );
+
+  const TtsModelVariant({
+    required this.fileName,
+    required this.label,
+    required this.description,
+    required this.sizeMB,
+    required this.url,
+  });
+
+  final String fileName;
+  final String label;
+  final String description;
+  final int sizeMB;
+  final String url;
+
+  /// Look up a variant by its file name, fallback to [int8].
+  static TtsModelVariant fromFileName(String name) {
+    for (final v in values) {
+      if (v.fileName == name) return v;
+    }
+    return int8;
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// ModelDownloadService — multi-model support
+// ══════════════════════════════════════════════════════════════
+
+/// Downloads and caches MNN TTS models from HuggingFace.
 ///
-/// The model (~109 MB) is downloaded once on first launch and stored
-/// permanently in the app's documents directory. Subsequent launches
-/// skip the download entirely.
+/// On first launch the small INT8 model (~28 MB) is downloaded.
+/// Users can switch to the higher-quality FP16+INT8 model from settings.
 class ModelDownloadService {
-  static const String _modelUrl =
-      'https://huggingface.co/developerabu/mms-tts-tam-mnn/resolve/main/model_fp32.mnn';
-
-  static const String _modelFileName = 'model_fp32.mnn';
+  static const String _prefKey = 'selected_model';
 
   /// Partial download suffix — renamed to final name only after success.
   static const String _partialSuffix = '.part';
 
   String? _modelsDir;
 
-  /// Initialize the models directory.
+  /// The currently-selected variant (persisted via SharedPreferences).
+  TtsModelVariant _selected = TtsModelVariant.int8;
+  TtsModelVariant get selectedVariant => _selected;
+
+  /// Initialize the models directory and load the persisted selection.
   Future<void> initialize() async {
     final dir = await getApplicationDocumentsDirectory();
     _modelsDir = p.join(dir.path, 'models');
     await Directory(_modelsDir!).create(recursive: true);
+
+    final prefs = await SharedPreferences.getInstance();
+    final stored = prefs.getString(_prefKey);
+    if (stored != null) {
+      _selected = TtsModelVariant.fromFileName(stored);
+    }
   }
 
   Future<void> _ensureDir() async {
@@ -33,40 +91,55 @@ class ModelDownloadService {
     await initialize();
   }
 
-  /// Full path to the cached model file.
+  /// Persist the user's model choice.
+  Future<void> setSelectedVariant(TtsModelVariant variant) async {
+    _selected = variant;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_prefKey, variant.fileName);
+  }
+
+  /// Full path to the currently-selected model file.
   Future<String> get modelPath async {
     await _ensureDir();
-    return p.join(_modelsDir!, _modelFileName);
+    return p.join(_modelsDir!, _selected.fileName);
   }
 
-  /// Whether the model has already been downloaded.
-  Future<bool> get isModelDownloaded async {
-    final path = await modelPath;
-    final file = File(path);
+  /// Full path for an arbitrary variant.
+  Future<String> pathForVariant(TtsModelVariant variant) async {
+    await _ensureDir();
+    return p.join(_modelsDir!, variant.fileName);
+  }
+
+  /// Whether the currently-selected model has been downloaded.
+  Future<bool> get isModelDownloaded async =>
+      isVariantDownloaded(_selected);
+
+  /// Whether a specific variant has been downloaded.
+  Future<bool> isVariantDownloaded(TtsModelVariant variant) async {
+    await _ensureDir();
+    final file = File(p.join(_modelsDir!, variant.fileName));
     if (!await file.exists()) return false;
-    // Sanity check: model should be > 10 MB (avoid corrupt/truncated files)
     final size = await file.length();
-    return size > 10 * 1024 * 1024;
+    return size > 5 * 1024 * 1024; // at least 5 MB
   }
 
-  /// Download the model with progress reporting.
+  /// Download a specific model variant with progress reporting.
   ///
   /// [onProgress] receives (bytesReceived, totalBytes).
-  /// totalBytes may be -1 if the server doesn't send Content-Length.
-  ///
   /// Returns the path to the downloaded model file.
-  /// Throws on network errors or cancellation.
   Future<String> downloadModel({
+    TtsModelVariant? variant,
     void Function(int bytesReceived, int totalBytes)? onProgress,
   }) async {
     await _ensureDir();
-    final finalPath = p.join(_modelsDir!, _modelFileName);
+    final v = variant ?? _selected;
+    final finalPath = p.join(_modelsDir!, v.fileName);
     final partialPath = '$finalPath$_partialSuffix';
 
     // Already downloaded — skip
     final finalFile = File(finalPath);
-    if (await finalFile.exists() && await finalFile.length() > 10 * 1024 * 1024) {
-      debugPrint('ModelDownload: Model already exists at $finalPath');
+    if (await finalFile.exists() && await finalFile.length() > 5 * 1024 * 1024) {
+      debugPrint('ModelDownload: ${v.fileName} already exists');
       onProgress?.call(1, 1);
       return finalPath;
     }
@@ -77,13 +150,12 @@ class ModelDownloadService {
       await partialFile.delete();
     }
 
-    debugPrint('ModelDownload: Starting download from $_modelUrl');
+    debugPrint('ModelDownload: Starting download of ${v.fileName} from ${v.url}');
     final stopwatch = Stopwatch()..start();
 
     final client = HttpClient();
     try {
-      final request = await client.getUrl(Uri.parse(_modelUrl));
-      // Follow redirects (HuggingFace uses CDN redirects)
+      final request = await client.getUrl(Uri.parse(v.url));
       request.followRedirects = true;
       request.maxRedirects = 5;
 
@@ -95,7 +167,7 @@ class ModelDownloadService {
         );
       }
 
-      final totalBytes = response.contentLength; // -1 if unknown
+      final totalBytes = response.contentLength;
       int bytesReceived = 0;
 
       final sink = partialFile.openWrite();
@@ -109,13 +181,12 @@ class ModelDownloadService {
       await sink.flush();
       await sink.close();
 
-      // Verify the download is reasonable size
       final downloadedSize = await partialFile.length();
-      if (downloadedSize < 10 * 1024 * 1024) {
+      if (downloadedSize < 5 * 1024 * 1024) {
         await partialFile.delete();
         throw Exception(
           'Downloaded file too small (${downloadedSize} bytes). '
-          'Expected ~109 MB. Download may have been truncated.',
+          'Expected ~${v.sizeMB} MB.',
         );
       }
 
@@ -125,7 +196,8 @@ class ModelDownloadService {
       stopwatch.stop();
       final sizeMB = (downloadedSize / (1024 * 1024)).toStringAsFixed(1);
       final seconds = stopwatch.elapsedMilliseconds / 1000;
-      debugPrint('ModelDownload: Complete — $sizeMB MB in ${seconds.toStringAsFixed(1)}s');
+      debugPrint('ModelDownload: ${v.fileName} complete — '
+          '$sizeMB MB in ${seconds.toStringAsFixed(1)}s');
 
       return finalPath;
     } finally {
@@ -133,21 +205,31 @@ class ModelDownloadService {
     }
   }
 
-  /// Delete the cached model (e.g. to force re-download).
-  Future<void> deleteModel() async {
+  /// Delete a specific variant's cached file.
+  Future<void> deleteVariant(TtsModelVariant variant) async {
     await _ensureDir();
-    final file = File(p.join(_modelsDir!, _modelFileName));
+    final file = File(p.join(_modelsDir!, variant.fileName));
     if (await file.exists()) await file.delete();
-    final partial = File(p.join(_modelsDir!, '$_modelFileName$_partialSuffix'));
+    final partial = File(p.join(_modelsDir!, '${variant.fileName}$_partialSuffix'));
     if (await partial.exists()) await partial.delete();
-    debugPrint('ModelDownload: Model deleted');
+    debugPrint('ModelDownload: ${variant.fileName} deleted');
   }
 
-  /// Get the size of the cached model in bytes, or 0 if not downloaded.
-  Future<int> get modelSize async {
-    final path = await modelPath;
-    final file = File(path);
+  /// Delete all cached models.
+  Future<void> deleteAllModels() async {
+    for (final v in TtsModelVariant.values) {
+      await deleteVariant(v);
+    }
+  }
+
+  /// Get download size of a specific variant in bytes, or 0 if not downloaded.
+  Future<int> variantSize(TtsModelVariant variant) async {
+    await _ensureDir();
+    final file = File(p.join(_modelsDir!, variant.fileName));
     if (!await file.exists()) return 0;
     return file.length();
   }
+
+  /// Get the size of the currently-selected model in bytes, or 0.
+  Future<int> get modelSize => variantSize(_selected);
 }

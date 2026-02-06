@@ -1,49 +1,154 @@
-/// Hadith data model
-class Hadith {
-  final int id;
-  final int hadithNumber;
-  final String book;
-  final String chapter;
-  final String textTamil;
-  final String? audioPath;
+/// Represents a hadith collection type
+enum HadithCollection {
+  bukhari,
+  muslim;
 
-  const Hadith({
-    required this.id,
-    required this.hadithNumber,
-    required this.book,
-    required this.chapter,
-    required this.textTamil,
-    this.audioPath,
+  String get displayName {
+    switch (this) {
+      case HadithCollection.bukhari:
+        return 'ஸஹீஹுல் புகாரி';
+      case HadithCollection.muslim:
+        return 'ஸஹீஹ் முஸ்லிம்';
+    }
+  }
+
+  String get shortName {
+    switch (this) {
+      case HadithCollection.bukhari:
+        return 'புகாரி';
+      case HadithCollection.muslim:
+        return 'முஸ்லிம்';
+    }
+  }
+
+  String get tableName {
+    switch (this) {
+      case HadithCollection.bukhari:
+        return 'bukhari';
+      case HadithCollection.muslim:
+        return 'sahihmuslim';
+    }
+  }
+
+  String get headTableName {
+    switch (this) {
+      case HadithCollection.bukhari:
+        return 'bukhari_head';
+      case HadithCollection.muslim:
+        return 'muslim_head';
+    }
+  }
+}
+
+/// Represents a book/chapter index entry from the head tables
+class HadithBookIndex {
+  final int firstHadithNumber;
+  final int bookNumber;
+  final String bookTitle;
+  final int? volume; // Bukhari only has volumes
+
+  const HadithBookIndex({
+    required this.firstHadithNumber,
+    required this.bookNumber,
+    required this.bookTitle,
+    this.volume,
   });
 
-  factory Hadith.fromMap(Map<String, dynamic> map) {
-    return Hadith(
-      id: map['id'] as int,
-      hadithNumber: map['hadith_number'] as int,
-      book: map['book'] as String? ?? '',
-      chapter: map['chapter'] as String? ?? '',
-      textTamil: map['text_tamil'] as String? ?? '',
-      audioPath: map['audio_path'] as String?,
+  factory HadithBookIndex.fromBukhariHead(Map<String, dynamic> map) {
+    return HadithBookIndex(
+      firstHadithNumber: map['sno'] as int? ?? 0,
+      bookNumber: map['book'] as int? ?? 0,
+      bookTitle: map['booktitle'] as String? ?? '',
+      volume: map['volume'] as int?,
     );
   }
 
-  Map<String, dynamic> toMap() {
-    return {
-      'id': id,
-      'hadith_number': hadithNumber,
-      'book': book,
-      'chapter': chapter,
-      'text_tamil': textTamil,
-      'audio_path': audioPath,
-    };
-  }
-
-  /// Get a short preview of the hadith text
-  String get preview {
-    if (textTamil.length <= 120) return textTamil;
-    return '${textTamil.substring(0, 120)}...';
+  factory HadithBookIndex.fromMuslimHead(Map<String, dynamic> map) {
+    return HadithBookIndex(
+      firstHadithNumber: map['hadithno'] as int? ?? 0,
+      bookNumber: map['book'] as int? ?? 0,
+      bookTitle: map['bookname'] as String? ?? '',
+    );
   }
 
   @override
-  String toString() => 'Hadith(#$hadithNumber, $book)';
+  String toString() => 'HadithBookIndex(book=$bookNumber, "$bookTitle")';
+}
+
+/// Hadith data model — supports both Bukhari and Muslim collections
+class Hadith {
+  final int hadithNumber;
+  final HadithCollection collection;
+  final String content; // Main Tamil text
+  final String bookTitle;
+  final int bookNumber;
+  final String lessionHeading;
+  final String narratedBy; // Bukhari only
+  final String arabic; // Bukhari only
+  final int? volume; // Bukhari only
+
+  const Hadith({
+    required this.hadithNumber,
+    required this.collection,
+    required this.content,
+    required this.bookTitle,
+    required this.bookNumber,
+    this.lessionHeading = '',
+    this.narratedBy = '',
+    this.arabic = '',
+    this.volume,
+  });
+
+  /// Create from a Bukhari table row
+  factory Hadith.fromBukhari(Map<String, dynamic> map) {
+    return Hadith(
+      hadithNumber: map['sno'] as int? ?? 0,
+      collection: HadithCollection.bukhari,
+      content: map['content'] as String? ?? '',
+      bookTitle: map['booktitle'] as String? ?? '',
+      bookNumber: map['book'] is int
+          ? map['book'] as int
+          : int.tryParse(map['book']?.toString() ?? '') ?? 0,
+      lessionHeading: map['lessionheading'] as String? ?? '',
+      narratedBy: map['narratedby'] as String? ?? '',
+      arabic: map['arabic'] as String? ?? '',
+      volume: map['volume'] as int?,
+    );
+  }
+
+  /// Create from a Sahih Muslim table row
+  factory Hadith.fromMuslim(Map<String, dynamic> map) {
+    return Hadith(
+      hadithNumber: map['hadithno'] as int? ?? 0,
+      collection: HadithCollection.muslim,
+      content: map['content'] as String? ?? '',
+      bookTitle: map['bookname'] as String? ?? '',
+      bookNumber: map['book'] is int
+          ? map['book'] as int
+          : int.tryParse(map['book']?.toString() ?? '') ?? 0,
+      lessionHeading: map['lessionheading'] as String? ?? '',
+    );
+  }
+
+  /// Unified cache key for audio: collection prefix + hadith number
+  String get cacheKey => '${collection.name}_$hadithNumber';
+
+  /// Get a short preview of the hadith text
+  String get preview {
+    if (content.length <= 120) return content;
+    return '${content.substring(0, 120)}...';
+  }
+
+  /// For display in UI — the book name
+  String get book => bookTitle;
+
+  /// For display — the lesson/chapter heading
+  String get chapter => lessionHeading;
+
+  /// The main Tamil text
+  String get textTamil => content;
+
+  @override
+  String toString() =>
+      'Hadith(${collection.shortName} #$hadithNumber, book=$bookNumber)';
 }

@@ -7,7 +7,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../models/hadith.dart';
 
-/// Database service for accessing Bukhari hadith collection
+/// Database service for accessing multiple hadith collections (Bukhari + Muslim)
 class HadithDatabase {
   Database? _db;
 
@@ -16,11 +16,11 @@ class HadithDatabase {
   /// Initialize database by copying from assets if needed
   Future<void> initialize() async {
     final dir = await getApplicationDocumentsDirectory();
-    final dbPath = p.join(dir.path, 'bukhari.db');
+    final dbPath = p.join(dir.path, 'hadith.db');
 
     // Copy from assets if not exists
     if (!await File(dbPath).exists()) {
-      final data = await rootBundle.load('assets/db/bukhari.db');
+      final data = await rootBundle.load('assets/db/hadith.db');
       final bytes = data.buffer.asUint8List();
       await File(dbPath).writeAsBytes(bytes, flush: true);
     }
@@ -28,95 +28,151 @@ class HadithDatabase {
     _db = await openDatabase(dbPath, readOnly: true);
   }
 
-  /// Get all distinct books
-  Future<List<String>> getBooks() async {
+  // ─────────────────────── Book Index ───────────────────────
+
+  /// Get the book index (head table) for a collection
+  Future<List<HadithBookIndex>> getBookIndex(HadithCollection collection) async {
     _ensureOpen();
-    final result = await _db!.rawQuery(
-        'SELECT DISTINCT book FROM hadiths ORDER BY id');
-    return result.map((row) => row['book'] as String).toList();
+    final table = collection.headTableName;
+
+    if (collection == HadithCollection.bukhari) {
+      final rows = await _db!.rawQuery(
+        'SELECT * FROM $table ORDER BY volume ASC, book ASC',
+      );
+      return rows.map((r) => HadithBookIndex.fromBukhariHead(r)).toList();
+    } else {
+      final rows = await _db!.rawQuery(
+        'SELECT * FROM $table ORDER BY book ASC',
+      );
+      return rows.map((r) => HadithBookIndex.fromMuslimHead(r)).toList();
+    }
   }
 
-  /// Get hadiths for a specific book
-  Future<List<Hadith>> getHadithsByBook(String book) async {
+  // ─────────────────────── Hadiths ───────────────────────
+
+  /// Get hadiths for a specific book number within a collection
+  Future<List<Hadith>> getHadithsByBook(
+    HadithCollection collection,
+    int bookNumber,
+  ) async {
     _ensureOpen();
-    final result = await _db!.query(
-      'hadiths',
+    final table = collection.tableName;
+    final orderCol =
+        collection == HadithCollection.bukhari ? 'sno' : 'hadithno';
+
+    final rows = await _db!.query(
+      table,
       where: 'book = ?',
-      whereArgs: [book],
-      orderBy: 'hadith_number ASC',
+      whereArgs: [bookNumber],
+      orderBy: '$orderCol ASC',
     );
-    return result.map((row) => Hadith.fromMap(row)).toList();
+
+    return rows.map((r) {
+      return collection == HadithCollection.bukhari
+          ? Hadith.fromBukhari(r)
+          : Hadith.fromMuslim(r);
+    }).toList();
   }
 
-  /// Get a single hadith by ID
-  Future<Hadith?> getHadith(int id) async {
-    _ensureOpen();
-    final result = await _db!.query(
-      'hadiths',
-      where: 'id = ?',
-      whereArgs: [id],
-      limit: 1,
-    );
-    if (result.isEmpty) return null;
-    return Hadith.fromMap(result.first);
-  }
-
-  /// Get hadiths by hadith number
-  Future<List<Hadith>> getHadithsByNumber(int number) async {
-    _ensureOpen();
-    final result = await _db!.query(
-      'hadiths',
-      where: 'hadith_number = ?',
-      whereArgs: [number],
-    );
-    return result.map((row) => Hadith.fromMap(row)).toList();
-  }
-
-  /// Search hadiths by Tamil text
-  Future<List<Hadith>> searchHadiths(String query) async {
-    _ensureOpen();
-    final result = await _db!.query(
-      'hadiths',
-      where: 'text_tamil LIKE ?',
-      whereArgs: ['%$query%'],
-      orderBy: 'hadith_number ASC',
-      limit: 50,
-    );
-    return result.map((row) => Hadith.fromMap(row)).toList();
-  }
-
-  /// Get total hadith count
-  Future<int> getCount() async {
-    _ensureOpen();
-    final result = await _db!.rawQuery('SELECT COUNT(*) as cnt FROM hadiths');
-    return Sqflite.firstIntValue(result) ?? 0;
-  }
-
-  /// Get hadiths paginated
+  /// Get hadiths paginated for a specific book
   Future<List<Hadith>> getHadithsPaginated({
+    required HadithCollection collection,
+    required int bookNumber,
     required int offset,
     required int limit,
-    String? book,
   }) async {
     _ensureOpen();
-    if (book != null) {
-      final result = await _db!.query(
-        'hadiths',
-        where: 'book = ?',
-        whereArgs: [book],
-        orderBy: 'hadith_number ASC',
-        limit: limit,
-        offset: offset,
-      );
-      return result.map((row) => Hadith.fromMap(row)).toList();
-    }
-    final result = await _db!.query(
-      'hadiths',
-      orderBy: 'id ASC',
+    final table = collection.tableName;
+    final orderCol =
+        collection == HadithCollection.bukhari ? 'sno' : 'hadithno';
+
+    final rows = await _db!.query(
+      table,
+      where: 'book = ?',
+      whereArgs: [bookNumber],
+      orderBy: '$orderCol ASC',
       limit: limit,
       offset: offset,
     );
-    return result.map((row) => Hadith.fromMap(row)).toList();
+
+    return rows.map((r) {
+      return collection == HadithCollection.bukhari
+          ? Hadith.fromBukhari(r)
+          : Hadith.fromMuslim(r);
+    }).toList();
+  }
+
+  /// Get count of hadiths in a specific book
+  Future<int> getBookHadithCount(
+    HadithCollection collection,
+    int bookNumber,
+  ) async {
+    _ensureOpen();
+    final table = collection.tableName;
+    final result = await _db!.rawQuery(
+      'SELECT COUNT(*) as cnt FROM $table WHERE book = ?',
+      [bookNumber],
+    );
+    return Sqflite.firstIntValue(result) ?? 0;
+  }
+
+  /// Get total hadith count for a collection
+  Future<int> getCount(HadithCollection collection) async {
+    _ensureOpen();
+    final table = collection.tableName;
+    final result =
+        await _db!.rawQuery('SELECT COUNT(*) as cnt FROM $table');
+    return Sqflite.firstIntValue(result) ?? 0;
+  }
+
+  /// Search hadiths by Tamil text across a collection (or both)
+  Future<List<Hadith>> searchHadiths(
+    String query, {
+    HadithCollection? collection,
+  }) async {
+    _ensureOpen();
+    final pattern = '%$query%';
+    final List<Hadith> results = [];
+
+    if (collection == null || collection == HadithCollection.bukhari) {
+      final rows = await _db!.rawQuery(
+        'SELECT * FROM bukhari WHERE content LIKE ? ORDER BY sno ASC LIMIT 30',
+        [pattern],
+      );
+      results.addAll(rows.map((r) => Hadith.fromBukhari(r)));
+    }
+
+    if (collection == null || collection == HadithCollection.muslim) {
+      final limit = collection == null ? 30 : 50;
+      final rows = await _db!.rawQuery(
+        'SELECT * FROM sahihmuslim WHERE content LIKE ? ORDER BY hadithno ASC LIMIT ?',
+        [pattern, limit],
+      );
+      results.addAll(rows.map((r) => Hadith.fromMuslim(r)));
+    }
+
+    return results;
+  }
+
+  /// Get a single hadith by number and collection
+  Future<Hadith?> getHadith(
+    HadithCollection collection,
+    int hadithNumber,
+  ) async {
+    _ensureOpen();
+    final table = collection.tableName;
+    final col = collection == HadithCollection.bukhari ? 'sno' : 'hadithno';
+
+    final rows = await _db!.query(
+      table,
+      where: '$col = ?',
+      whereArgs: [hadithNumber],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return collection == HadithCollection.bukhari
+        ? Hadith.fromBukhari(rows.first)
+        : Hadith.fromMuslim(rows.first);
   }
 
   void _ensureOpen() {

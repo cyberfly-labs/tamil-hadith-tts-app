@@ -9,12 +9,23 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 
 /// Audio player service that plays PCM float32 audio from TTS.
-/// Supports background playback (screen off) via audio_session.
+/// Supports true streaming playback: audio starts on the first chunk
+/// while remaining chunks are still being synthesized.
+///
+/// Uses a simple file-queue approach instead of ConcatenatingAudioSource
+/// for maximum reliability across Android versions.
 class AudioPlayerService {
   final AudioPlayer _player = AudioPlayer();
   String? _tempDir;
-  ConcatenatingAudioSource? _playlist;
   int _chunkIndex = 0;
+
+  // ── Streaming queue state ──
+  final List<String> _chunkQueue = [];
+  bool _streamingMode = false;
+  bool _allChunksSent = false;
+  bool _isAdvancing = false;  // Reentrancy guard for _advanceQueue
+  Completer<void>? _streamingCompleter;
+  StreamSubscription<ProcessingState>? _stateSub;
 
   AudioPlayer get player => _player;
 
@@ -31,10 +42,8 @@ class AudioPlayerService {
     // Handle audio interruptions (phone call, etc.)
     session.interruptionEventStream.listen((event) {
       if (event.begin) {
-        // Another app interrupted — pause
         if (_player.playing) _player.pause();
       } else {
-        // Interruption ended — resume if we were playing
         if (!_player.playing &&
             _player.processingState != ProcessingState.idle &&
             _player.processingState != ProcessingState.completed) {
@@ -55,38 +64,50 @@ class AudioPlayerService {
 
     _tempDir ??= (await getApplicationCacheDirectory()).path;
 
-    // Convert PCM float32 to WAV file
     final wavBytes = _pcmToWav(pcmData, sampleRate);
     final wavFile = File(p.join(_tempDir!, 'tts_output.wav'));
     await wavFile.writeAsBytes(wavBytes);
 
-    // Play the WAV file
     await _player.setFilePath(wavFile.path);
     await _player.play();
   }
 
-  /// Start streaming playback. Call this once before [addStreamingChunk].
-  /// Playback begins as soon as the first chunk is added.
+  // ════════════════════════════════════════════════════════════
+  // Streaming playback — queue-based, starts on first chunk
+  // ════════════════════════════════════════════════════════════
+
+  /// Start a new streaming session. Call before [addStreamingChunk].
   Future<void> startStreaming() async {
+    debugPrint('AudioPlayer: startStreaming()');
     _tempDir ??= (await getApplicationCacheDirectory()).path;
+
+    // Stop any old playback (could be from a different hadith or cached file)
+    await _player.stop();
+
     _chunkIndex = 0;
+    _chunkQueue.clear();
+    _streamingMode = true;
+    _allChunksSent = false;
+    _isAdvancing = false;
+    _streamingCompleter = Completer<void>();
 
     // Clean up previous chunk files
-    final dir = Directory(_tempDir!);
-    await for (final f in dir.list()) {
-      if (f is File && p.basename(f.path).startsWith('tts_chunk_')) {
-        await f.delete();
-      }
-    }
+    await cleanupChunks();
 
-    _playlist = ConcatenatingAudioSource(children: []);
-    await _player.setAudioSource(_playlist!, preload: false);
+    // Listen for each chunk finishing so we auto-advance the queue
+    _stateSub?.cancel();
+    _stateSub = _player.processingStateStream.listen((state) {
+      debugPrint('AudioPlayer: processingState=$state streaming=$_streamingMode queue=${_chunkQueue.length} allSent=$_allChunksSent');
+      if (_streamingMode && state == ProcessingState.completed) {
+        _advanceQueue();
+      }
+    });
   }
 
-  /// Add a new PCM chunk to the streaming playlist and start playing
-  /// if not already playing.
+  /// Add a PCM chunk. Playback starts immediately on the first chunk;
+  /// subsequent chunks are queued and play seamlessly after the current one.
   Future<void> addStreamingChunk(Float32List pcmData, {int sampleRate = 16000}) async {
-    if (pcmData.isEmpty || _playlist == null) return;
+    if (pcmData.isEmpty || !_streamingMode) return;
 
     _tempDir ??= (await getApplicationCacheDirectory()).path;
 
@@ -94,23 +115,81 @@ class AudioPlayerService {
     final wavFile = File(p.join(_tempDir!, 'tts_chunk_${_chunkIndex++}.wav'));
     await wavFile.writeAsBytes(wavBytes);
 
-    await _playlist!.add(AudioSource.file(wavFile.path));
+    _chunkQueue.add(wavFile.path);
+    debugPrint('AudioPlayer: addChunk #${_chunkIndex - 1} (${pcmData.length} samples, ${(pcmData.length / sampleRate).toStringAsFixed(2)}s) queue=${_chunkQueue.length} playing=${_player.playing} state=${_player.processingState} advancing=$_isAdvancing');
 
-    // Start playback on the first chunk
-    if (!_player.playing) {
-      await _player.play();
+    // If the player is idle / just finished, kick off the next chunk now.
+    // The _isAdvancing guard prevents racing with the _stateSub callback.
+    if (!_isAdvancing &&
+        !_player.playing &&
+        (_player.processingState == ProcessingState.idle ||
+         _player.processingState == ProcessingState.completed)) {
+      await _advanceQueue();
     }
   }
 
-  /// Wait for the current streaming playlist to finish playing.
-  /// Returns a future that completes when playback reaches the end.
-  Future<void> awaitStreamingComplete() async {
-    if (_playlist == null) return;
-    // Listen for the player completing (reaching the end of the queue)
-    await _player.processingStateStream.firstWhere(
-      (state) => state == ProcessingState.completed,
-    );
+  /// Signal that no more chunks will arrive.
+  /// Playback continues until the queue drains, then streaming completes.
+  void finishStreaming() {
+    debugPrint('AudioPlayer: finishStreaming() queue=${_chunkQueue.length} playing=${_player.playing} state=${_player.processingState}');
+    _allChunksSent = true;
+    // If the queue is already empty and player is done → complete now
+    if (_chunkQueue.isEmpty &&
+        !_player.playing &&
+        (_player.processingState == ProcessingState.completed ||
+         _player.processingState == ProcessingState.idle)) {
+      _completeStreaming();
+    }
   }
+
+  /// Returns a future that completes when all queued chunks have played.
+  Future<void> awaitStreamingComplete() async {
+    return _streamingCompleter?.future ?? Future.value();
+  }
+
+  /// Play the next chunk from the queue, or finish if done.
+  /// Guarded against reentrancy — two concurrent callers (subscription +
+  /// addStreamingChunk) cannot both pop-and-play at the same time.
+  Future<void> _advanceQueue() async {
+    if (_isAdvancing) {
+      debugPrint('AudioPlayer: _advanceQueue skipped (already advancing)');
+      return;
+    }
+    _isAdvancing = true;
+    try {
+      if (_chunkQueue.isNotEmpty) {
+        final path = _chunkQueue.removeAt(0);
+        debugPrint('AudioPlayer: Playing chunk $path (remaining=${_chunkQueue.length})');
+        try {
+          await _player.setFilePath(path);
+          await _player.play();
+          debugPrint('AudioPlayer: play() returned, playing=${_player.playing}');
+        } catch (e) {
+          debugPrint('AudioPlayer: Chunk play failed: $e');
+        }
+      } else if (_allChunksSent) {
+        debugPrint('AudioPlayer: Queue drained, completing stream');
+        _completeStreaming();
+      } else {
+        debugPrint('AudioPlayer: Queue empty, waiting for more chunks');
+      }
+    } finally {
+      _isAdvancing = false;
+    }
+  }
+
+  void _completeStreaming() {
+    _streamingMode = false;
+    _stateSub?.cancel();
+    _stateSub = null;
+    if (_streamingCompleter != null && !_streamingCompleter!.isCompleted) {
+      _streamingCompleter!.complete();
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════
+  // Direct file playback (for cached audio)
+  // ════════════════════════════════════════════════════════════
 
   /// Play a WAV file directly from disk (e.g. from audio cache).
   Future<void> playFromFile(String filePath) async {
@@ -119,7 +198,6 @@ class AudioPlayerService {
   }
 
   /// Clean up all temporary chunk WAV files.
-  /// Call after streaming playback finishes to avoid disk bloat.
   Future<void> cleanupChunks() async {
     if (_tempDir == null) return;
     final dir = Directory(_tempDir!);
@@ -136,30 +214,41 @@ class AudioPlayerService {
 
   // ── Playback speed ──
 
-  /// Current playback speed (1.0 = normal).
   double get speed => _player.speed;
-
-  /// Stream of speed changes.
   Stream<double> get speedStream => _player.speedStream;
 
-  /// Set playback speed. Typical values: 0.75, 1.0, 1.25, 1.5.
   Future<void> setSpeed(double speed) async {
     await _player.setSpeed(speed);
   }
 
-  /// Stop current playback
+  /// Stop current playback and cancel streaming.
   Future<void> stop() async {
+    _streamingMode = false;
+    _allChunksSent = true;
+    _chunkQueue.clear();
+    _stateSub?.cancel();
+    _stateSub = null;
+    if (_streamingCompleter != null && !_streamingCompleter!.isCompleted) {
+      _streamingCompleter!.complete();
+    }
     await _player.stop();
   }
 
-  /// Pause current playback
   Future<void> pause() async {
     await _player.pause();
   }
 
-  /// Resume playback
   Future<void> resume() async {
     await _player.play();
+  }
+
+  /// Get the player stream for listening to state changes
+  Stream<bool> get playingStream => _player.playingStream;
+
+  /// Dispose resources
+  void dispose() {
+    _stateSub?.cancel();
+    _player.dispose();
   }
 
   /// Convert PCM float32 to WAV byte array
@@ -172,7 +261,6 @@ class AudioPlayerService {
     final dataSize = numSamples * blockAlign;
     final fileSize = 36 + dataSize;
 
-    // Only write the 44-byte WAV header into ByteData; PCM data is bulk-copied
     final buffer = ByteData(44);
     int offset = 0;
 
@@ -193,7 +281,7 @@ class AudioPlayerService {
     buffer.setUint8(offset++, 0x6D); // 'm'
     buffer.setUint8(offset++, 0x74); // 't'
     buffer.setUint8(offset++, 0x20); // ' '
-    buffer.setUint32(offset, 16, Endian.little); // chunk size
+    buffer.setUint32(offset, 16, Endian.little);
     offset += 4;
     buffer.setUint16(offset, 1, Endian.little); // PCM format
     offset += 2;
@@ -214,27 +302,16 @@ class AudioPlayerService {
     buffer.setUint8(offset++, 0x74); // 't'
     buffer.setUint8(offset++, 0x61); // 'a'
     buffer.setUint32(offset, dataSize, Endian.little);
-    offset += 4;
 
-    // Vectorized float32 → int16 (integer clamp avoids slow double-clamp)
+    // float32 → int16
     final samples = Int16List(numSamples);
     for (int i = 0; i < numSamples; i++) {
       samples[i] = (pcmData[i] * 32767).toInt().clamp(-32767, 32767);
     }
     final sampleBytes = samples.buffer.asUint8List();
     final result = Uint8List(44 + dataSize);
-    // Copy header
     result.setRange(0, 44, buffer.buffer.asUint8List());
-    // Copy PCM data
     result.setRange(44, 44 + dataSize, sampleBytes);
     return result;
-  }
-
-  /// Get the player stream for listening to state changes
-  Stream<bool> get playingStream => _player.playingStream;
-
-  /// Dispose resources
-  void dispose() {
-    _player.dispose();
   }
 }
