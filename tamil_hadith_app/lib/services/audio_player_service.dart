@@ -175,6 +175,16 @@ class AudioPlayerService {
       }
     } finally {
       _isAdvancing = false;
+      // Race-condition safety net: if chunks arrived while we were advancing
+      // and the player has already completed, the _stateSub event was lost.
+      // Re-check to prevent playback from stalling.
+      if (_streamingMode &&
+          _chunkQueue.isNotEmpty &&
+          !_player.playing &&
+          (_player.processingState == ProcessingState.completed ||
+           _player.processingState == ProcessingState.idle)) {
+        Future.microtask(() => _advanceQueue());
+      }
     }
   }
 

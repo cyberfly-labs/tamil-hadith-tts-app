@@ -563,16 +563,22 @@ class _TtsWorker {
 
         debugPrint('TTS-Isolate: chunk ${i+1}/${sentences.length} (${chunkTokens.length} tokens)');
 
-        // ── Pre-synthesis silences (only for validated chunks) ──
+        // ── Build pre-silence buffer (merged into audio, NOT sent separately) ──
+        //    Sending tiny separate chunks causes a race condition in the audio
+        //    player where the completion event is lost, stalling playback.
+        Float32List? preSilence;
         if (isFirstAudioChunk) {
-          // Paragraph-start delay: intentional opening
-          _mainPort.send(TtsChunk(requestId, _roomTone(_paragraphStartMs)));
+          preSilence = _roomTone(_paragraphStartMs);
         } else {
-          // Micro pitch reset: ~12ms room-tone gap resets prosody contour
-          _mainPort.send(TtsChunk(requestId, _roomTone(12)));
-          // Sacred pre-delay: respectful silence before Allah/Nabi/Rasool
           if (_containsSacred(chunk)) {
-            _mainPort.send(TtsChunk(requestId, _roomTone(_sacredPreDelayMs)));
+            // Micro pitch reset + sacred pre-delay merged
+            final micro = _roomTone(12);
+            final sacred = _roomTone(_sacredPreDelayMs);
+            preSilence = Float32List(micro.length + sacred.length);
+            preSilence.setRange(0, micro.length, micro);
+            preSilence.setRange(micro.length, preSilence.length, sacred);
+          } else {
+            preSilence = _roomTone(12); // micro pitch reset only
           }
         }
 
@@ -634,6 +640,14 @@ class _TtsWorker {
           emitAudio = _appendSilence(emitAudio, _longChunkBreathMs);
         }
 
+        // ── Prepend pre-silence into the audio (one chunk = one WAV file) ──
+        if (preSilence != null) {
+          final combined = Float32List(preSilence.length + emitAudio.length);
+          combined.setRange(0, preSilence.length, preSilence);
+          combined.setRange(preSilence.length, combined.length, emitAudio);
+          emitAudio = combined;
+        }
+
         _mainPort.send(TtsChunk(requestId, emitAudio));
       }
 
@@ -687,6 +701,16 @@ class _TtsWorker {
       s = s.replaceAll(pattern, entry.value);
     }
 
+    // 4b. Strip non-pronounceable characters remaining after abbreviation expansion
+    //     Quotes and parentheses are not in the Tamil VITS vocabulary;
+    //     they tokenize as spaces and waste tokens.
+    s = s
+        .replaceAll('\u2018', '').replaceAll('\u2019', '')  // smart single quotes
+        .replaceAll('\u201C', '').replaceAll('\u201D', '')  // smart double quotes
+        .replaceAll("'", '').replaceAll('"', '')            // straight quotes
+        .replaceAll('(', '').replaceAll(')', '')            // parentheses
+        .replaceAll('[', '').replaceAll(']', '');           // brackets
+
     // 5. Arabic / Islamic pronunciation corrections
     for (final entry in _pronunciationFixes.entries) {
       s = s.replaceAll(entry.key, entry.value);
@@ -704,15 +728,11 @@ class _TtsWorker {
 
     // 7. Smart pause insertion — add commas for natural narration flow
     //    AFTER narration words: கூறினார்கள் → கூறினார்கள்,
+    //    IMPORTANT: requires whitespace on BOTH sides to prevent matching
+    //    a short word inside a longer one (e.g. "கூறினார்" inside "கூறினார்கள்").
     for (final word in _pauseAfterWords) {
-      // Only add comma if the word isn't already followed by punctuation
       s = s.replaceAllMapped(
-        RegExp(RegExp.escape(word) + r'(?=[^\s,;:.!?])'),
-        (m) => '${m.group(0)},',
-      );
-      // Also handle: word + space + next-word (no comma)
-      s = s.replaceAllMapped(
-        RegExp(RegExp.escape(word) + r'\s+(?=[^\s,;:.!?])'),
+        RegExp(r'(?<=\s|^)' + RegExp.escape(word) + r'\s+(?=[^\s,;:.!?])'),
         (m) => '$word, ',
       );
     }
