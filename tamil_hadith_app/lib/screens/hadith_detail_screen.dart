@@ -70,8 +70,6 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
     return Scaffold(
       body: CustomScrollView(
         slivers: [
@@ -80,6 +78,8 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
             expandedHeight: 130,
             floating: false,
             pinned: true,
+            backgroundColor: const Color(0xFF1B4D3E),
+            foregroundColor: const Color(0xFFFAF7F2),
             title: Text('ஹதீஸ் #${widget.hadith.hadithNumber}'),
             actions: [
               IconButton(
@@ -106,13 +106,13 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
             ],
             flexibleSpace: FlexibleSpaceBar(
               background: Container(
-                decoration: BoxDecoration(
+                decoration: const BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      cs.primary,
-                      cs.primary.withValues(alpha: 0.8),
+                      Color(0xFF1B4D3E),
+                      Color(0xFF0D3020),
                     ],
                   ),
                 ),
@@ -128,9 +128,11 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
                             label: widget.hadith.collection.shortName,
                           ),
                           const SizedBox(width: 8),
-                          _InfoChip(
-                            icon: Icons.auto_stories_rounded,
-                            label: widget.hadith.book,
+                          Flexible(
+                            child: _InfoChip(
+                              icon: Icons.auto_stories_rounded,
+                              label: widget.hadith.book,
+                            ),
                           ),
                           const SizedBox(width: 8),
                           _InfoChip(
@@ -155,17 +157,17 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   decoration: BoxDecoration(
-                    color: cs.primaryContainer.withValues(alpha: 0.3),
+                    color: const Color(0xFFD4A04A).withValues(alpha: 0.06),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                        color: cs.primaryContainer.withValues(alpha: 0.5)),
+                        color: const Color(0xFFD4A04A).withValues(alpha: 0.25)),
                   ),
                   child: Text(
                     widget.hadith.chapter,
                     style: TextStyle(
                       fontSize: _fontSize,
                       fontWeight: FontWeight.w700,
-                      color: cs.onPrimaryContainer,
+                      color: const Color(0xFF1B4D3E),
                       height: 1.5,
                     ),
                   ),
@@ -182,7 +184,7 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
                   children: [
                     Icon(Icons.person_rounded,
                         size: 16,
-                        color: cs.onSurface.withValues(alpha: 0.45)),
+                        color: const Color(0xFF6B6B6B)),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
@@ -190,7 +192,7 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
                         style: TextStyle(
                           fontSize: _fontSize - 2,
                           fontStyle: FontStyle.italic,
-                          color: cs.onSurface.withValues(alpha: 0.6),
+                          color: const Color(0xFF6B6B6B),
                           height: 1.5,
                         ),
                       ),
@@ -200,17 +202,80 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
               ),
             ),
 
+          // ── Ornamental divider ──
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      height: 1,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            const Color(0xFFD4A04A).withValues(alpha: 0.0),
+                            const Color(0xFFD4A04A).withValues(alpha: 0.4),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Icon(
+                      Icons.auto_awesome,
+                      size: 14,
+                      color: const Color(0xFFD4A04A).withValues(alpha: 0.5),
+                    ),
+                  ),
+                  Expanded(
+                    child: Container(
+                      height: 1,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            const Color(0xFFD4A04A).withValues(alpha: 0.4),
+                            const Color(0xFFD4A04A).withValues(alpha: 0.0),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
           // ── Hadith text body ──
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
-              child: SelectableText(
-                widget.hadith.textTamil,
-                style: TextStyle(
-                  fontSize: _fontSize,
-                  height: 1.85,
-                  color: cs.onSurface,
-                  letterSpacing: 0.1,
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFFDF9),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: const Color(0xFFE8DDD0),
+                    width: 1,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.02),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: SelectableText(
+                  widget.hadith.textTamil,
+                  style: TextStyle(
+                    fontSize: _fontSize,
+                    height: 1.85,
+                    color: const Color(0xFF1A1A1A),
+                    letterSpacing: 0.1,
+                  ),
                 ),
               ),
             ),
@@ -224,14 +289,20 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
   }
 
   Widget _buildPlaybackBar(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final showSpeed = _isPlaying ||
         _audioPlayer.player.processingState != ProcessingState.idle;
 
     return Container(
       decoration: BoxDecoration(
-        color: cs.surface,
-        border: Border(top: BorderSide(color: cs.outlineVariant, width: 0.5)),
+        color: const Color(0xFFFFFDF9),
+        border: Border(top: BorderSide(color: const Color(0xFFE8DDD0), width: 1)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, -2),
+          ),
+        ],
       ),
       child: SafeArea(
         child: Padding(
@@ -245,9 +316,9 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
                   padding: const EdgeInsets.only(bottom: 6),
                   child: Text(
                     _statusText,
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 12,
-                      color: cs.onSurface.withValues(alpha: 0.5),
+                      color: Color(0xFF6B6B6B),
                     ),
                   ),
                 ),
@@ -269,10 +340,6 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
                             ),
                           ),
                           label: const Text('ஒலிப்பதிவு...'),
-                          style: FilledButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 20, vertical: 12),
-                          ),
                         )
                       : FilledButton.icon(
                           onPressed: _onPlayPause,
@@ -285,10 +352,6 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
                           label: Text(
                             _isPlaying ? 'நிறுத்து' : 'ஒலிக்கவும்',
                           ),
-                          style: FilledButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 20, vertical: 12),
-                          ),
                         ),
                   if (_isPlaying) ...[
                     const SizedBox(width: 10),
@@ -296,7 +359,7 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
                       onPressed: _onStop,
                       icon: const Icon(Icons.stop_rounded, size: 20),
                       style: IconButton.styleFrom(
-                        side: BorderSide(color: cs.outlineVariant),
+                        side: const BorderSide(color: Color(0xFFE8DDD0)),
                       ),
                     ),
                   ],
@@ -310,9 +373,9 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.speed_rounded,
+                      const Icon(Icons.speed_rounded,
                           size: 15,
-                          color: cs.onSurface.withValues(alpha: 0.4)),
+                          color: Color(0xFF9E9E9E)),
                       const SizedBox(width: 6),
                       for (final speed in _speedOptions)
                         Padding(
@@ -546,7 +609,7 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
   }
 }
 
-/// White translucent info chip for the collapsing header
+/// Gold-accented info chip for the collapsing header
 class _InfoChip extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -558,20 +621,27 @@ class _InfoChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.18),
+        color: const Color(0xFFD4A04A).withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: const Color(0xFFD4A04A).withValues(alpha: 0.3),
+          width: 1,
+        ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: Colors.white70),
+          Icon(icon, size: 14, color: const Color(0xFFD4A04A)),
           const SizedBox(width: 5),
-          Text(
-            label,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
+          Flexible(
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: Color(0xFFD4A04A),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         ],

@@ -39,21 +39,29 @@ class _HomeScreenState extends State<HomeScreen> {
         index: _currentTab,
         children: bodies,
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _currentTab,
-        onDestinationSelected: (i) => setState(() => _currentTab = i),
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.menu_book_outlined),
-            selectedIcon: Icon(Icons.menu_book_rounded),
-            label: 'குர்ஆன்',
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFFDF9),
+          border: Border(
+            top: BorderSide(color: const Color(0xFFE8DDD0), width: 1),
           ),
-          NavigationDestination(
-            icon: Icon(Icons.auto_stories_outlined),
-            selectedIcon: Icon(Icons.auto_stories_rounded),
-            label: 'ஹதீஸ்',
-          ),
-        ],
+        ),
+        child: NavigationBar(
+          selectedIndex: _currentTab,
+          onDestinationSelected: (i) => setState(() => _currentTab = i),
+          destinations: const [
+            NavigationDestination(
+              icon: Icon(Icons.menu_book_outlined),
+              selectedIcon: Icon(Icons.menu_book_rounded),
+              label: 'குர்ஆன்',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.auto_stories_outlined),
+              selectedIcon: Icon(Icons.auto_stories_rounded),
+              label: 'ஹதீஸ்',
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -122,8 +130,6 @@ class _HadithHomeBodyState extends State<_HadithHomeBody>
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
     if (_isLoading) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
@@ -138,12 +144,12 @@ class _HadithHomeBodyState extends State<_HadithHomeBody>
         slivers: [
           // ── Collapsing App Bar with hero header ──
           SliverAppBar(
-            expandedHeight: 200,
+            expandedHeight: 240,
             floating: false,
             pinned: true,
             stretch: true,
-            backgroundColor: cs.surface,
-            foregroundColor: cs.onSurface,
+            backgroundColor: const Color(0xFF1B4D3E),
+            foregroundColor: const Color(0xFFFAF8F3),
             title: Text(_selectedCollection.shortName),
             actions: [
               IconButton(
@@ -176,13 +182,13 @@ class _HadithHomeBodyState extends State<_HadithHomeBody>
             ],
             flexibleSpace: FlexibleSpaceBar(
               background: Container(
-                decoration: BoxDecoration(
+                decoration: const BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      cs.primary,
-                      cs.primary.withValues(alpha: 0.82),
+                      Color(0xFF1B4D3E),
+                      Color(0xFF0D3020),
                     ],
                   ),
                 ),
@@ -190,47 +196,79 @@ class _HadithHomeBodyState extends State<_HadithHomeBody>
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      // Decorative icon
-                      Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.15),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.auto_stories_rounded,
-                          color: Colors.white,
-                          size: 36,
-                        ),
+                      // Decorative icon with border
+                      Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          Container(
+                            width: 56,
+                            height: 56,
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: const Color(0xFFD4A04A),
+                                width: 1.5,
+                              ),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFD4A04A).withValues(alpha: 0.1),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.auto_stories_rounded,
+                              color: Color(0xFFD4A04A),
+                              size: 28,
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 10),
+
                       Text(
                         _selectedCollection.displayName,
                         style: const TextStyle(
-                          color: Colors.white,
+                          color: Color(0xFFFAF8F3),
                           fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 0.3,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.5,
                         ),
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 2),
+                      const Text(
+                        'ஹதீஸ் தொகுப்பு',
+                        style: TextStyle(
+                          color: Color(0xFFD4A04A),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 5),
+                            horizontal: 14, vertical: 6),
                         decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.18),
+                          border: Border.all(
+                            color: const Color(0xFFD4A04A).withValues(alpha: 0.4),
+                            width: 1,
+                          ),
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Text(
-                          '${books.length} புத்தகங்கள் · $totalCount ஹதீஸ்கள்',
+                          '${books.length} புத்தகங்கள் • $totalCount ஹதீஸ்கள்',
                           style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
+                            color: Color(0xFFD4A04A),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.2,
                           ),
                         ),
                       ),
-                      const SizedBox(height: 28),
+                      const SizedBox(height: 12),
                     ],
                   ),
                 ),
@@ -239,7 +277,7 @@ class _HadithHomeBodyState extends State<_HadithHomeBody>
             bottom: PreferredSize(
               preferredSize: const Size.fromHeight(48),
               child: Container(
-                color: cs.surface,
+                color: const Color(0xFFFFFDF9),
                 child: TabBar(
                   controller: _tabController,
                   tabs: [
@@ -247,6 +285,10 @@ class _HadithHomeBodyState extends State<_HadithHomeBody>
                     Tab(text: HadithCollection.muslim.shortName),
                   ],
                   indicatorSize: TabBarIndicatorSize.label,
+                  indicatorColor: const Color(0xFFD4A04A),
+                  indicatorWeight: 2.5,
+                  labelColor: const Color(0xFF1B4D3E),
+                  unselectedLabelColor: const Color(0xFF6B6B6B),
                   labelStyle: const TextStyle(
                     fontWeight: FontWeight.w700,
                     fontSize: 14,
@@ -255,6 +297,7 @@ class _HadithHomeBodyState extends State<_HadithHomeBody>
                     fontWeight: FontWeight.w500,
                     fontSize: 14,
                   ),
+                  dividerHeight: 0,
                 ),
               ),
             ),
@@ -270,20 +313,27 @@ class _HadithHomeBodyState extends State<_HadithHomeBody>
                   padding: const EdgeInsets.symmetric(
                       horizontal: 16, vertical: 14),
                   decoration: BoxDecoration(
-                    color: cs.surface,
+                    color: const Color(0xFFFFFDF9),
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: cs.outlineVariant),
+                    border: Border.all(color: const Color(0xFFE8DDD0)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.03),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
                   ),
                   child: Row(
                     children: [
                       Icon(Icons.search_rounded,
-                          color: cs.onSurface.withValues(alpha: 0.4),
+                          color: const Color(0xFF6B6B6B),
                           size: 22),
                       const SizedBox(width: 12),
                       Text(
                         'ஹதீஸ் தேடுங்கள்...',
                         style: TextStyle(
-                          color: cs.onSurface.withValues(alpha: 0.4),
+                          color: const Color(0xFF9E9E9E),
                           fontSize: 15,
                         ),
                       ),
@@ -301,9 +351,9 @@ class _HadithHomeBodyState extends State<_HadithHomeBody>
               child: Text(
                 'புத்தகங்கள்',
                 style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: cs.onSurface.withValues(alpha: 0.5),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF1B4D3E),
                   letterSpacing: 0.5,
                 ),
               ),
@@ -371,60 +421,87 @@ class _BookIndexCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
-    return Card(
+    return Material(
+      color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          child: Row(
-            children: [
-              // Index badge
-              Container(
-                width: 42,
-                height: 42,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: cs.primaryContainer,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  '$index',
-                  style: TextStyle(
-                    color: cs.onPrimaryContainer,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFFDF9),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFFE8DDD0), width: 1),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.025),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                // Index badge — emerald gradient
+                Container(
+                  width: 42,
+                  height: 42,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Color(0xFF1B4D3E),
+                        Color(0xFF0D3020),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: const Color(0xFFD4A04A),
+                      width: 1,
+                    ),
+                  ),
+                  child: Text(
+                    '$index',
+                    style: const TextStyle(
+                      color: Color(0xFFD4A04A),
+                      fontWeight: FontWeight.w800,
+                      fontSize: 16,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      bookIndex.bookTitle,
-                      style: const TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.w600),
-                    ),
-                    if (bookIndex.volume != null) ...[
-                      const SizedBox(height: 2),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       Text(
-                        'தொகுதி ${bookIndex.volume}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: cs.onSurface.withValues(alpha: 0.5),
+                        bookIndex.bookTitle,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF1A1A1A),
                         ),
                       ),
+                      if (bookIndex.volume != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          'தொகுதி ${bookIndex.volume}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF6B6B6B),
+                          ),
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
-              ),
-              Icon(Icons.chevron_right_rounded,
-                  color: cs.onSurface.withValues(alpha: 0.3)),
-            ],
+                const Icon(Icons.chevron_right_rounded,
+                    color: Color(0xFFD4A04A), size: 22),
+              ],
+            ),
           ),
         ),
       ),
@@ -553,7 +630,8 @@ class _HadithSearchDelegate extends SearchDelegate<Hadith?> {
           separatorBuilder: (_, __) => const SizedBox(height: 8),
           itemBuilder: (context, index) {
             final hadith = results[index];
-            return Card(
+            return Material(
+              color: Colors.transparent,
               child: InkWell(
                 onTap: () {
                   close(context, null);
@@ -564,8 +642,13 @@ class _HadithSearchDelegate extends SearchDelegate<Hadith?> {
                     ),
                   );
                 },
-                borderRadius: BorderRadius.circular(16),
-                child: Padding(
+                borderRadius: BorderRadius.circular(14),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFFDF9),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xFFE8DDD0)),
+                  ),
                   padding: const EdgeInsets.all(14),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -577,27 +660,13 @@ class _HadithSearchDelegate extends SearchDelegate<Hadith?> {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 8, vertical: 3),
                             decoration: BoxDecoration(
-                              color: hadith.collection ==
-                                      HadithCollection.bukhari
-                                  ? Theme.of(context)
-                                      .colorScheme
-                                      .primaryContainer
-                                  : Theme.of(context)
-                                      .colorScheme
-                                      .tertiaryContainer,
+                              color: const Color(0xFF1B4D3E),
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
                               hadith.collection.shortName,
-                              style: TextStyle(
-                                color: hadith.collection ==
-                                        HadithCollection.bukhari
-                                    ? Theme.of(context)
-                                        .colorScheme
-                                        .onPrimaryContainer
-                                    : Theme.of(context)
-                                        .colorScheme
-                                        .onTertiaryContainer,
+                              style: const TextStyle(
+                                color: Color(0xFFD4A04A),
                                 fontWeight: FontWeight.bold,
                                 fontSize: 11,
                               ),
@@ -608,17 +677,16 @@ class _HadithSearchDelegate extends SearchDelegate<Hadith?> {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 10, vertical: 4),
                             decoration: BoxDecoration(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .primaryContainer,
+                              color: const Color(0xFFD4A04A).withValues(alpha: 0.12),
                               borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: const Color(0xFFD4A04A).withValues(alpha: 0.3),
+                              ),
                             ),
                             child: Text(
                               '#${hadith.hadithNumber}',
-                              style: TextStyle(
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onPrimaryContainer,
+                              style: const TextStyle(
+                                color: Color(0xFFB8860B),
                                 fontWeight: FontWeight.bold,
                                 fontSize: 12,
                               ),
@@ -628,12 +696,9 @@ class _HadithSearchDelegate extends SearchDelegate<Hadith?> {
                           Expanded(
                             child: Text(
                               hadith.bookTitle,
-                              style: TextStyle(
+                              style: const TextStyle(
                                 fontSize: 12,
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onSurface
-                                    .withValues(alpha: 0.5),
+                                color: Color(0xFF6B6B6B),
                               ),
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -643,7 +708,11 @@ class _HadithSearchDelegate extends SearchDelegate<Hadith?> {
                       const SizedBox(height: 8),
                       Text(
                         hadith.preview,
-                        style: const TextStyle(fontSize: 14, height: 1.5),
+                        style: const TextStyle(
+                          fontSize: 14,
+                          height: 1.5,
+                          color: Color(0xFF1A1A1A),
+                        ),
                         maxLines: 3,
                         overflow: TextOverflow.ellipsis,
                       ),

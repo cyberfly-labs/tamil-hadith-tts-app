@@ -190,8 +190,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
     return Scaffold(
       appBar: AppBar(title: const Text('அமைப்புகள்')),
       body: _loading
@@ -200,16 +198,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
               padding: const EdgeInsets.symmetric(vertical: 8),
               children: [
                 // ── Model selection section ──
-                _SectionHeader(title: 'AI ஒலி மாதிரி', color: cs),
+                const _SectionHeader(title: 'AI ஒலி மாதிரி'),
                 const SizedBox(height: 4),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16),
                   child: Text(
                     'சிறிய மாதிரி வேகமாக பதிவிறக்கம் ஆகும். '
                     'பெரிய மாதிரி சிறந்த ஒலித்தரம் கொடுக்கும்.',
                     style: TextStyle(
                       fontSize: 13,
-                      color: cs.onSurface.withValues(alpha: 0.5),
+                      color: Color(0xFF6B6B6B),
                     ),
                   ),
                 ),
@@ -226,37 +224,65 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     downloadStatus: _downloading == variant ? _downloadStatus : '',
                     onSelect: () => _selectModel(variant),
                     onDelete: () => _deleteVariant(variant),
-                    cs: cs,
                   ),
 
                 const SizedBox(height: 24),
 
                 // ── Cache section ──
-                _SectionHeader(title: 'தற்காலிக சேமிப்பு', color: cs),
-                ListTile(
-                  leading: Icon(Icons.cached_rounded, color: cs.primary),
-                  title: const Text('ஒலி தற்காலிக சேமிப்பு'),
-                  subtitle: Text('$_cachedCount ஹதீஸ்கள் சேமிக்கப்பட்டுள்ளன'),
-                  trailing: TextButton(
-                    onPressed: _cachedCount > 0 ? _clearAudioCache : null,
-                    child: const Text('அழி'),
+                const _SectionHeader(title: 'தற்காலிக சேமிப்பு'),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFFDF9),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: const Color(0xFFE8DDD0)),
+                      ),
+                      child: ListTile(
+                        leading: const Icon(Icons.cached_rounded, color: Color(0xFF1B4D3E)),
+                        title: const Text('ஒலி தற்காலிக சேமிப்பு'),
+                        subtitle: Text('$_cachedCount ஹதீஸ்கள் சேமிக்கப்பட்டுள்ளன'),
+                        trailing: TextButton(
+                          onPressed: _cachedCount > 0 ? _clearAudioCache : null,
+                          child: const Text('அழி'),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
 
                 const SizedBox(height: 24),
 
                 // ── About section ──
-                _SectionHeader(title: 'பயன்பாடு பற்றி', color: cs),
-                const ListTile(
-                  leading: Icon(Icons.auto_stories_rounded),
-                  title: Text('புகாரி ஹதீஸ் — AI தமிழ் ஒலி'),
-                  subtitle: Text('பதிப்பு 1.0.0'),
+                const _SectionHeader(title: 'பயன்பாடு பற்றி'),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFFDF9),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: const Color(0xFFE8DDD0)),
+                    ),
+                    child: const Column(
+                      children: [
+                        ListTile(
+                          leading: Icon(Icons.auto_stories_rounded, color: Color(0xFF1B4D3E)),
+                          title: Text('புகாரி ஹதீஸ் — AI தமிழ் ஒலி'),
+                          subtitle: Text('பதிப்பு 1.0.0'),
+                        ),
+                        Divider(height: 0),
+                        ListTile(
+                          leading: Icon(Icons.memory_rounded, color: Color(0xFF1B4D3E)),
+                          title: Text('AI மாதிரி'),
+                          subtitle: Text('facebook/mms-tts-tam (MNN)'),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-                const ListTile(
-                  leading: Icon(Icons.memory_rounded),
-                  title: Text('AI மாதிரி'),
-                  subtitle: Text('facebook/mms-tts-tam (MNN)'),
-                ),
+                const SizedBox(height: 24),
               ],
             ),
     );
@@ -269,22 +295,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
 class _SectionHeader extends StatelessWidget {
   final String title;
-  final ColorScheme color;
 
-  const _SectionHeader({required this.title, required this.color});
+  const _SectionHeader({required this.title});
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-      child: Text(
-        title,
-        style: TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.w700,
-          color: color.primary,
-          letterSpacing: 0.5,
-        ),
+      child: Row(
+        children: [
+          Container(
+            width: 3,
+            height: 16,
+            decoration: BoxDecoration(
+              color: const Color(0xFFD4A04A),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF1B4D3E),
+              letterSpacing: 0.5,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -300,7 +338,6 @@ class _ModelCard extends StatelessWidget {
   final String downloadStatus;
   final VoidCallback onSelect;
   final VoidCallback onDelete;
-  final ColorScheme cs;
 
   const _ModelCard({
     required this.variant,
@@ -312,24 +349,28 @@ class _ModelCard extends StatelessWidget {
     required this.downloadStatus,
     required this.onSelect,
     required this.onDelete,
-    required this.cs,
   });
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: Card(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-          side: isSelected
-              ? BorderSide(color: cs.primary, width: 2)
-              : BorderSide.none,
-        ),
+      child: Material(
+        color: Colors.transparent,
         child: InkWell(
           onTap: isDownloading ? null : onSelect,
           borderRadius: BorderRadius.circular(14),
-          child: Padding(
+          child: Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFFDF9),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: isSelected
+                    ? const Color(0xFFD4A04A)
+                    : const Color(0xFFE8DDD0),
+                width: isSelected ? 2 : 1,
+              ),
+            ),
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -341,7 +382,9 @@ class _ModelCard extends StatelessWidget {
                       isSelected
                           ? Icons.radio_button_checked_rounded
                           : Icons.radio_button_off_rounded,
-                      color: isSelected ? cs.primary : cs.onSurface.withValues(alpha: 0.3),
+                      color: isSelected
+                          ? const Color(0xFF1B4D3E)
+                          : const Color(0xFF9E9E9E),
                       size: 22,
                     ),
                     const SizedBox(width: 10),
@@ -351,18 +394,18 @@ class _ModelCard extends StatelessWidget {
                         children: [
                           Text(
                             variant.label,
-                            style: TextStyle(
+                            style: const TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.w600,
-                              color: cs.onSurface,
+                              color: Color(0xFF1A1A1A),
                             ),
                           ),
                           const SizedBox(height: 2),
                           Text(
                             variant.description,
-                            style: TextStyle(
+                            style: const TextStyle(
                               fontSize: 12,
-                              color: cs.onSurface.withValues(alpha: 0.5),
+                              color: Color(0xFF6B6B6B),
                             ),
                           ),
                         ],
@@ -372,15 +415,18 @@ class _ModelCard extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
-                        color: cs.surfaceContainerHighest,
+                        color: const Color(0xFFD4A04A).withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: const Color(0xFFD4A04A).withValues(alpha: 0.25),
+                        ),
                       ),
                       child: Text(
                         '~${variant.sizeMB} MB',
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
-                          color: cs.onSurface.withValues(alpha: 0.6),
+                          color: Color(0xFFB8860B),
                         ),
                       ),
                     ),
@@ -395,16 +441,16 @@ class _ModelCard extends StatelessWidget {
                     child: LinearProgressIndicator(
                       value: downloadProgress > 0 ? downloadProgress : null,
                       minHeight: 6,
-                      backgroundColor: cs.surfaceContainerHighest,
-                      color: cs.primary,
+                      backgroundColor: const Color(0xFFE8DDD0),
+                      color: const Color(0xFF1B4D3E),
                     ),
                   ),
                   const SizedBox(height: 6),
                   Text(
                     downloadStatus,
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 12,
-                      color: cs.onSurface.withValues(alpha: 0.5),
+                      color: Color(0xFF6B6B6B),
                     ),
                   ),
                 ],
@@ -433,17 +479,17 @@ class _ModelCard extends StatelessWidget {
                           ],
                         )
                       else
-                        Row(
+                        const Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(Icons.cloud_download_outlined,
-                                size: 14, color: cs.onSurface.withValues(alpha: 0.4)),
-                            const SizedBox(width: 4),
+                                size: 14, color: Color(0xFF9E9E9E)),
+                            SizedBox(width: 4),
                             Text(
                               'பதிவிறக்கம் தேவை',
                               style: TextStyle(
                                 fontSize: 11,
-                                color: cs.onSurface.withValues(alpha: 0.4),
+                                color: Color(0xFF9E9E9E),
                               ),
                             ),
                           ],
@@ -453,7 +499,7 @@ class _ModelCard extends StatelessWidget {
                       if (isDownloaded && !isSelected)
                         IconButton(
                           icon: Icon(Icons.delete_outline_rounded,
-                              size: 18, color: cs.error),
+                              size: 18, color: Colors.red.shade400),
                           onPressed: onDelete,
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(),

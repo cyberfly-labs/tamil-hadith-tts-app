@@ -74,8 +74,6 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('புக்மார்க்கள்'),
@@ -87,23 +85,35 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.bookmark_outline_rounded,
-                          size: 56,
-                          color: cs.onSurface.withValues(alpha: 0.15)),
-                      const SizedBox(height: 16),
-                      Text(
+                      Container(
+                        width: 72,
+                        height: 72,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFD4A04A).withValues(alpha: 0.08),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: const Color(0xFFD4A04A).withValues(alpha: 0.2),
+                          ),
+                        ),
+                        child: const Icon(Icons.bookmark_outline_rounded,
+                            size: 36,
+                            color: Color(0xFFD4A04A)),
+                      ),
+                      const SizedBox(height: 20),
+                      const Text(
                         'புக்மார்க்கள் இல்லை',
                         style: TextStyle(
-                          fontSize: 16,
-                          color: cs.onSurface.withValues(alpha: 0.4),
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF1A1A1A),
                         ),
                       ),
                       const SizedBox(height: 8),
-                      Text(
+                      const Text(
                         'ஹதீஸ் பக்கத்தில் ★ ஐ தட்டவும்',
                         style: TextStyle(
-                          fontSize: 13,
-                          color: cs.onSurface.withValues(alpha: 0.3),
+                          fontSize: 14,
+                          color: Color(0xFF6B6B6B),
                         ),
                       ),
                     ],
@@ -154,96 +164,120 @@ class _BookmarkCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
-    return Card(
+    return Material(
+      color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Number badge
-              Container(
-                width: 44,
-                height: 44,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: cs.primaryContainer,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  '${hadith.hadithNumber}',
-                  style: TextStyle(
-                    color: cs.onPrimaryContainer,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              // Content
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: cs.tertiaryContainer,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            hadith.collection.shortName,
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                              color: cs.onTertiaryContainer,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            hadith.book,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: cs.primary,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      hadith.preview,
-                      style: TextStyle(
-                        fontSize: 14,
-                        height: 1.5,
-                        color: cs.onSurface,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-              // Remove button
-              IconButton(
-                icon: Icon(Icons.bookmark_remove_rounded,
-                    color: cs.error.withValues(alpha: 0.7), size: 20),
-                onPressed: onRemove,
-                tooltip: 'புக்மார்க் நீக்கு',
-                visualDensity: VisualDensity.compact,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFFDF9),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFFE8DDD0), width: 1),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.025),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
               ),
             ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Number badge — emerald gradient
+                Container(
+                  width: 44,
+                  height: 44,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Color(0xFF1B4D3E),
+                        Color(0xFF0D3020),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: const Color(0xFFD4A04A),
+                      width: 1,
+                    ),
+                  ),
+                  child: Text(
+                    '${hadith.hadithNumber}',
+                    style: const TextStyle(
+                      color: Color(0xFFD4A04A),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                // Content
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF1B4D3E),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              hadith.collection.shortName,
+                              style: const TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFFD4A04A),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              hadith.book,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF1B4D3E),
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        hadith.preview,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          height: 1.5,
+                          color: Color(0xFF1A1A1A),
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                // Remove button
+                IconButton(
+                  icon: Icon(Icons.bookmark_remove_rounded,
+                      color: Colors.red.shade400, size: 20),
+                  onPressed: onRemove,
+                  tooltip: 'புக்மார்க் நீக்கு',
+                  visualDensity: VisualDensity.compact,
+                ),
+              ],
+            ),
           ),
         ),
       ),

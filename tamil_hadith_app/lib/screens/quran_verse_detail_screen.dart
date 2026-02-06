@@ -47,6 +47,10 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
   int _currentVerseIndex = 0; // which verse is currently being played
   bool _cancelRequested = false;
 
+  // Lookahead: pre-synthesize next verse while current one plays
+  Future<void>? _prefetchFuture;
+  String? _prefetchCacheKey;
+
   static const List<double> _speedOptions = [0.75, 1.0, 1.25, 1.5];
 
   final ScrollController _scrollController = ScrollController();
@@ -83,6 +87,7 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
   @override
   void dispose() {
     _cancelRequested = true;
+    _cancelPrefetch();
     _playingSub?.cancel();
     _scrollController.dispose();
     super.dispose();
@@ -102,7 +107,6 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final totalVerses = widget.verses.length;
 
     return Scaffold(
@@ -111,9 +115,12 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
         slivers: [
           // ── Collapsing header ──
           SliverAppBar(
-            expandedHeight: 130,
+            expandedHeight: 140,
             floating: false,
             pinned: true,
+            backgroundColor: const Color(0xFF1B4D3E),
+            foregroundColor: const Color(0xFFFAF8F3),
+            centerTitle: true,
             title: Text(_suraName),
             flexibleSpace: FlexibleSpaceBar(
               background: Container(
@@ -122,26 +129,37 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      cs.tertiary,
-                      cs.tertiary.withValues(alpha: 0.8),
+                      const Color(0xFF1B4D3E),
+                      const Color(0xFF0D3020),
                     ],
                   ),
                 ),
                 child: SafeArea(
                   child: Align(
-                    alignment: Alignment.bottomLeft,
+                    alignment: Alignment.bottomCenter,
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                      child: Row(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.end,
                         children: [
-                          _InfoChip(
-                            icon: Icons.menu_book_rounded,
-                            label: _suraName,
+                          Container(
+                            height: 1,
+                            color: const Color(0xFFD4A04A).withValues(alpha: 0.3),
                           ),
-                          const SizedBox(width: 8),
-                          _InfoChip(
-                            icon: Icons.format_list_numbered_rounded,
-                            label: '$totalVerses வசனங்கள்',
+                          const SizedBox(height: 10),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              _InfoChip(
+                                icon: Icons.menu_book_rounded,
+                                label: _suraName,
+                              ),
+                              const SizedBox(width: 12),
+                              _InfoChip(
+                                icon: Icons.format_list_numbered_rounded,
+                                label: '${widget.verses.length} வசனங்கள்',
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -180,36 +198,53 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
                     child: Container(
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(14),
-                        border: isActive
-                            ? Border.all(color: cs.tertiary, width: 2)
-                            : null,
+                        border: Border.all(
+                          color: isActive
+                              ? const Color(0xFFD4A04A)
+                              : const Color(0xFFE8DDD0),
+                          width: isActive ? 2 : 1,
+                        ),
                         color: isActive
-                            ? cs.tertiaryContainer.withValues(alpha: 0.2)
-                            : null,
+                            ? const Color(0xFFD4A04A).withValues(alpha: 0.06)
+                            : const Color(0xFFFFFDF9),
+                        boxShadow: isActive ? [
+                          BoxShadow(
+                            color: const Color(0xFFD4A04A).withValues(alpha: 0.1),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ] : null,
                       ),
                       child: Padding(
-                        padding: const EdgeInsets.all(14),
+                        padding: const EdgeInsets.all(12),
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             // Verse number badge
                             Container(
-                              width: 40,
-                              height: 40,
+                              width: 42,
+                              height: 42,
                               alignment: Alignment.center,
                               decoration: BoxDecoration(
-                                color: isActive
-                                    ? cs.tertiary
-                                    : cs.tertiaryContainer,
+                                gradient: LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: [
+                                    const Color(0xFF1B4D3E),
+                                    const Color(0xFF0D3020),
+                                  ],
+                                ),
                                 borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: const Color(0xFFD4A04A),
+                                  width: 1,
+                                ),
                               ),
                               child: Text(
                                 '${verse.aya}',
-                                style: TextStyle(
-                                  color: isActive
-                                      ? cs.onTertiary
-                                      : cs.onTertiaryContainer,
-                                  fontWeight: FontWeight.bold,
+                                style: const TextStyle(
+                                  color: Color(0xFFD4A04A),
+                                  fontWeight: FontWeight.w800,
                                   fontSize: 14,
                                 ),
                               ),
@@ -221,8 +256,9 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
                                 style: TextStyle(
                                   fontSize: _fontSize,
                                   height: 1.85,
-                                  color: cs.onSurface,
+                                  color: const Color(0xFF1A1A1A),
                                   letterSpacing: 0.1,
+                                  fontWeight: FontWeight.w500,
                                 ),
                               ),
                             ),
@@ -232,7 +268,7 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
                                 child: Icon(
                                   Icons.volume_up_rounded,
                                   size: 18,
-                                  color: cs.tertiary,
+                                  color: const Color(0xFFD4A04A),
                                 ),
                               ),
                           ],
@@ -254,14 +290,20 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
   }
 
   Widget _buildPlaybackBar(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final showSpeed = _isPlaying ||
         _audioPlayer.player.processingState != ProcessingState.idle;
 
     return Container(
       decoration: BoxDecoration(
-        color: cs.surface,
-        border: Border(top: BorderSide(color: cs.outlineVariant, width: 0.5)),
+        color: const Color(0xFFFFFDF9),
+        border: Border(top: BorderSide(color: const Color(0xFFE8DDD0), width: 1)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, -2),
+          ),
+        ],
       ),
       child: SafeArea(
         child: Padding(
@@ -275,9 +317,9 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
                   padding: const EdgeInsets.only(bottom: 6),
                   child: Text(
                     _statusText,
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 12,
-                      color: cs.onSurface.withValues(alpha: 0.5),
+                      color: Color(0xFF6B6B6B),
                     ),
                   ),
                 ),
@@ -294,7 +336,7 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
                           : null,
                       icon: const Icon(Icons.skip_previous_rounded, size: 20),
                       style: IconButton.styleFrom(
-                        side: BorderSide(color: cs.outlineVariant),
+                        side: const BorderSide(color: Color(0xFFE8DDD0)),
                       ),
                     ),
                   if (_isSuraPlaying) const SizedBox(width: 8),
@@ -314,10 +356,6 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
                           label: Text(
                             'வசனம் ${_currentVerse.aya}/${widget.verses.length}',
                           ),
-                          style: FilledButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 20, vertical: 12),
-                          ),
                         )
                       : FilledButton.icon(
                           onPressed: _onPlayPause,
@@ -334,10 +372,6 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
                                     ? 'தொடர்'
                                     : 'சூரா ஒலிக்கவும்'),
                           ),
-                          style: FilledButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 20, vertical: 12),
-                          ),
                         ),
 
                   // Stop
@@ -347,7 +381,7 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
                       onPressed: _onStop,
                       icon: const Icon(Icons.stop_rounded, size: 20),
                       style: IconButton.styleFrom(
-                        side: BorderSide(color: cs.outlineVariant),
+                        side: const BorderSide(color: Color(0xFFE8DDD0)),
                       ),
                     ),
                   ],
@@ -362,7 +396,7 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
                               : null,
                       icon: const Icon(Icons.skip_next_rounded, size: 20),
                       style: IconButton.styleFrom(
-                        side: BorderSide(color: cs.outlineVariant),
+                        side: const BorderSide(color: Color(0xFFE8DDD0)),
                       ),
                     ),
                 ],
@@ -375,9 +409,9 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.speed_rounded,
+                      const Icon(Icons.speed_rounded,
                           size: 15,
-                          color: cs.onSurface.withValues(alpha: 0.4)),
+                          color: Color(0xFF9E9E9E)),
                       const SizedBox(width: 6),
                       for (final speed in _speedOptions)
                         Padding(
@@ -457,14 +491,53 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
     await _playSuraSequential();
   }
 
+  /// Pre-synthesize the next uncached verse so it's ready when needed.
+  /// Called after the current verse's synthesis is done (TTS engine is free).
+  void _startPrefetch(int fromIndex) {
+    if (_cancelRequested || !mounted) return;
+
+    for (int i = fromIndex; i < widget.verses.length; i++) {
+      final verse = widget.verses[i];
+      final key = verse.cacheKey;
+      if (audioCache.getCachedPathByKey(key) != null) continue; // already cached
+      if (_prefetchCacheKey == key) return; // already prefetching this one
+
+      debugPrint('SuraPlay: Prefetching verse ${verse.sura}:${verse.aya}');
+      _prefetchCacheKey = key;
+      _prefetchFuture = _synthesizeToCache(verse);
+      return;
+    }
+  }
+
+  /// Synthesize a verse and save to cache (used by prefetch).
+  Future<void> _synthesizeToCache(QuranVerse verse) async {
+    try {
+      final audio = await ttsEngine.synthesize(verse.text);
+      if (audio != null && !_cancelRequested) {
+        await audioCache.saveToCacheByKey(verse.cacheKey, audio);
+        debugPrint('SuraPlay: Prefetch done ${verse.sura}:${verse.aya}');
+      }
+    } catch (e) {
+      debugPrint('SuraPlay: Prefetch error ${verse.sura}:${verse.aya}: $e');
+    }
+  }
+
+  void _cancelPrefetch() {
+    _prefetchFuture = null;
+    _prefetchCacheKey = null;
+  }
+
   /// Plays verses sequentially from _currentVerseIndex to end of sura.
-  /// For each verse: check cache → if not cached, synthesize → play → wait for completion → next.
+  /// Uses lookahead: while verse N plays, pre-synthesizes verse N+1 so
+  /// there is no gap between verses.
   Future<void> _playSuraSequential() async {
     while (_currentVerseIndex < widget.verses.length) {
       if (_cancelRequested || !mounted) break;
 
       final verse = widget.verses[_currentVerseIndex];
       final cacheKey = verse.cacheKey;
+      final nextIndex = _currentVerseIndex + 1;
+      final hasNext = nextIndex < widget.verses.length;
 
       if (mounted) {
         setState(() {
@@ -474,24 +547,37 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
         _scrollToVerse(_currentVerseIndex);
       }
 
-      // Check cache first
-      final cachedPath = audioCache.getCachedPathByKey(cacheKey);
+      // ── 1. Check disk cache (may have been filled by prefetch) ──
+      String? cachedPath = audioCache.getCachedPathByKey(cacheKey);
+
+      // ── 2. If not cached, check if prefetch is running for this verse ──
+      if (cachedPath == null &&
+          _prefetchCacheKey == cacheKey &&
+          _prefetchFuture != null) {
+        debugPrint('SuraPlay: Waiting for prefetch of $cacheKey');
+        if (mounted) setState(() => _isSynthesizing = true);
+        await _prefetchFuture;
+        _prefetchFuture = null;
+        _prefetchCacheKey = null;
+        if (mounted) setState(() => _isSynthesizing = false);
+        cachedPath = audioCache.getCachedPathByKey(cacheKey);
+      }
+
+      // ── 3. Play from cache if available ──
       if (cachedPath != null) {
         debugPrint('SuraPlay: Cache hit for ${verse.sura}:${verse.aya}');
         await _audioPlayer.playFromFile(cachedPath);
-        // Wait for this verse to finish playing
+        // Prefetch next verse while this one plays
+        if (hasNext) _startPrefetch(nextIndex);
         await _waitForPlaybackComplete();
         if (_cancelRequested || !mounted) break;
-        setState(() {
-          _currentVerseIndex++;
-        });
+        setState(() => _currentVerseIndex++);
         continue;
       }
 
-      // Synthesize this verse
-      if (mounted) {
-        setState(() => _isSynthesizing = true);
-      }
+      // ── 4. No cache — cancel stale prefetch, synthesize via streaming ──
+      _cancelPrefetch();
+      if (mounted) setState(() => _isSynthesizing = true);
 
       try {
         final text = verse.text;
@@ -530,12 +616,7 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
 
         if (chunkCount == 0) {
           debugPrint('SuraPlay: No audio for ${verse.sura}:${verse.aya}');
-          if (mounted) {
-            setState(() {
-              _isSynthesizing = false;
-            });
-          }
-          // Skip this verse
+          if (mounted) setState(() => _isSynthesizing = false);
           setState(() => _currentVerseIndex++);
           continue;
         }
@@ -558,6 +639,9 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
           });
         }
 
+        // ── KEY: Prefetch next verse while this one still plays ──
+        if (hasNext) _startPrefetch(nextIndex);
+
         // Wait for this verse to finish playing
         await _waitForPlaybackComplete();
         if (_cancelRequested || !mounted) break;
@@ -565,9 +649,7 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
         await _audioPlayer.cleanupChunks();
       } catch (e) {
         debugPrint('SuraPlay: Error on ${verse.sura}:${verse.aya}: $e');
-        if (mounted) {
-          setState(() => _isSynthesizing = false);
-        }
+        if (mounted) setState(() => _isSynthesizing = false);
       }
 
       if (mounted) {
@@ -579,6 +661,7 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
     }
 
     // Sura playback finished
+    _cancelPrefetch();
     if (mounted) {
       setState(() {
         _isSuraPlaying = false;
@@ -617,8 +700,9 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
   }
 
   void _skipToVerse(int index) {
-    // Cancel current synthesis, stop playback, jump to new verse
+    // Cancel current synthesis + prefetch, stop playback, jump to new verse
     _cancelRequested = true;
+    _cancelPrefetch();
     ttsEngine.cancelSynthesis();
     _audioPlayer.stop().then((_) {
       _audioPlayer.cleanupChunks();
@@ -637,6 +721,7 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
 
   Future<void> _onStop() async {
     _cancelRequested = true;
+    _cancelPrefetch();
     try {
       ttsEngine.cancelSynthesis();
       await _audioPlayer.stop();
@@ -659,7 +744,7 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
   }
 }
 
-/// White translucent info chip for the collapsing header
+/// Gold-accented info chip for the collapsing header
 class _InfoChip extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -669,22 +754,27 @@ class _InfoChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.18),
+        color: const Color(0xFFD4A04A).withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: const Color(0xFFD4A04A).withValues(alpha: 0.3),
+          width: 1,
+        ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: Colors.white70),
+          Icon(icon, size: 14, color: const Color(0xFFD4A04A)),
           const SizedBox(width: 5),
           Text(
             label,
             style: const TextStyle(
-              color: Colors.white,
+              color: Color(0xFFD4A04A),
               fontSize: 12,
               fontWeight: FontWeight.w600,
+              letterSpacing: 0.2,
             ),
           ),
         ],
