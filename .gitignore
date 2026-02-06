@@ -1,0 +1,35 @@
+# === Python ===
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# === Model / large binary files ===
+*.onnx
+
+
+# === Data intermediates ===
+bukhari_raw.txt
+clean.txt
+clean2.txt
+unicode.txt
+
+# === OS ===
+.DS_Store
+Thumbs.db
+
+# === IDE ===
+.vscode/
+*.iml
+
+# === Flutter app (handled by its own .gitignore) ===
+tamil_hadith_app/build/
+tamil_hadith_app/.dart_tool/
+tamil_hadith_app/.flutter-plugins-dependencies
+
+# MNN 3rd-party source (large vendored dependency)
+tamil_hadith_app/3rd_party/MNN/
+
+# Flutter asset models are tracked via Git LFS or kept small;
+# ignore the heavy ones copied at the root level only.
+# To track the assets/ models, override below:
