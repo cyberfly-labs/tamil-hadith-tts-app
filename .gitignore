@@ -33,3 +33,5 @@ tamil_hadith_app/3rd_party/MNN/
 # Flutter asset models are tracked via Git LFS or kept small;
 # ignore the heavy ones copied at the root level only.
 # To track the assets/ models, override below:
+model_fp32.mnn
+*.mnn
