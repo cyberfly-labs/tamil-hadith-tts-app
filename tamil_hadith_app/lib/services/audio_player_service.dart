@@ -4,10 +4,12 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:audio_session/audio_session.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 
-/// Audio player service that plays PCM float32 audio from TTS
+/// Audio player service that plays PCM float32 audio from TTS.
+/// Supports background playback (screen off) via audio_session.
 class AudioPlayerService {
   final AudioPlayer _player = AudioPlayer();
   String? _tempDir;
@@ -21,6 +23,30 @@ class AudioPlayerService {
   Future<void> initialize() async {
     final dir = await getApplicationCacheDirectory();
     _tempDir = dir.path;
+
+    // Inform the OS that we're a speech player (keeps audio on screen-off)
+    final session = await AudioSession.instance;
+    await session.configure(const AudioSessionConfiguration.speech());
+
+    // Handle audio interruptions (phone call, etc.)
+    session.interruptionEventStream.listen((event) {
+      if (event.begin) {
+        // Another app interrupted — pause
+        if (_player.playing) _player.pause();
+      } else {
+        // Interruption ended — resume if we were playing
+        if (!_player.playing &&
+            _player.processingState != ProcessingState.idle &&
+            _player.processingState != ProcessingState.completed) {
+          _player.play();
+        }
+      }
+    });
+
+    // Handle when user unplugs headphones
+    session.becomingNoisyEventStream.listen((_) {
+      _player.pause();
+    });
   }
 
   /// Play raw PCM float32 audio by converting to WAV first
@@ -92,6 +118,35 @@ class AudioPlayerService {
     await _player.play();
   }
 
+  /// Clean up all temporary chunk WAV files.
+  /// Call after streaming playback finishes to avoid disk bloat.
+  Future<void> cleanupChunks() async {
+    if (_tempDir == null) return;
+    final dir = Directory(_tempDir!);
+    if (!await dir.exists()) return;
+    await for (final f in dir.list()) {
+      if (f is File && p.basename(f.path).startsWith('tts_chunk_')) {
+        try {
+          await f.delete();
+        } catch (_) {}
+      }
+    }
+    debugPrint('AudioPlayer: Chunk files cleaned up');
+  }
+
+  // ── Playback speed ──
+
+  /// Current playback speed (1.0 = normal).
+  double get speed => _player.speed;
+
+  /// Stream of speed changes.
+  Stream<double> get speedStream => _player.speedStream;
+
+  /// Set playback speed. Typical values: 0.75, 1.0, 1.25, 1.5.
+  Future<void> setSpeed(double speed) async {
+    await _player.setSpeed(speed);
+  }
+
   /// Stop current playback
   Future<void> stop() async {
     await _player.stop();
@@ -161,10 +216,10 @@ class AudioPlayerService {
     buffer.setUint32(offset, dataSize, Endian.little);
     offset += 4;
 
-    // Batch-convert float32 → int16 using typed list for speed
+    // Vectorized float32 → int16 (integer clamp avoids slow double-clamp)
     final samples = Int16List(numSamples);
     for (int i = 0; i < numSamples; i++) {
-      samples[i] = (pcmData[i].clamp(-1.0, 1.0) * 32767).toInt();
+      samples[i] = (pcmData[i] * 32767).toInt().clamp(-32767, 32767);
     }
     final sampleBytes = samples.buffer.asUint8List();
     final result = Uint8List(44 + dataSize);

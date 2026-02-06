@@ -1,7 +1,7 @@
 import sqlite3
 import re
 
-text = open("clean2.txt",encoding="utf8").read()
+text = open("clean4.txt",encoding="utf8").read()
 
 pattern = r'(ஹதீஸ்\s*[:.]?\s*\d{1,5})'
 parts = re.split(pattern, text)

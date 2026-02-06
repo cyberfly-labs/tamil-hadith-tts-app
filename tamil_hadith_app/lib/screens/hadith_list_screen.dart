@@ -24,6 +24,7 @@ class _HadithListScreenState extends State<HadithListScreen> {
   final ScrollController _scrollController = ScrollController();
   bool _isLoading = true;
   bool _isLoadingMore = false;
+  bool _hasMore = true;
   static const _pageSize = 30;
 
   @override
@@ -47,6 +48,7 @@ class _HadithListScreenState extends State<HadithListScreen> {
     );
     setState(() {
       _hadiths.addAll(hadiths);
+      _hasMore = hadiths.length >= _pageSize;
       _isLoading = false;
     });
   }
@@ -54,7 +56,8 @@ class _HadithListScreenState extends State<HadithListScreen> {
   void _onScroll() {
     if (_scrollController.position.pixels >=
             _scrollController.position.maxScrollExtent - 200 &&
-        !_isLoadingMore) {
+        !_isLoadingMore &&
+        _hasMore) {
       _loadMore();
     }
   }
@@ -68,22 +71,52 @@ class _HadithListScreenState extends State<HadithListScreen> {
     );
     setState(() {
       _hadiths.addAll(hadiths);
+      _hasMore = hadiths.length >= _pageSize;
       _isLoadingMore = false;
     });
   }
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.book),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(32),
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 8, left: 16, right: 16),
+            child: Row(
+              children: [
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: cs.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '${_hadiths.length}${_hasMore ? '+' : ''} ஹதீஸ்கள்',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: cs.primary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : ListView.builder(
+          : ListView.separated(
               controller: _scrollController,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
               itemCount: _hadiths.length + (_isLoadingMore ? 1 : 0),
+              separatorBuilder: (_, __) => const SizedBox(height: 8),
               itemBuilder: (context, index) {
                 if (index >= _hadiths.length) {
                   return const Center(
@@ -120,47 +153,76 @@ class _HadithCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
     return Card(
-      margin: const EdgeInsets.only(bottom: 8),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
+          padding: const EdgeInsets.all(14),
+          child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      'ஹதீஸ் #${hadith.hadithNumber}',
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.primary,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13,
-                      ),
-                    ),
+              // Hadith number badge
+              Container(
+                width: 46,
+                height: 46,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: cs.primaryContainer,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  '${hadith.hadithNumber}',
+                  style: TextStyle(
+                    color: cs.onPrimaryContainer,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
                   ),
-                  const Spacer(),
-                  Icon(
-                    Icons.volume_up_outlined,
-                    size: 20,
-                    color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
-                  ),
-                ],
+                ),
               ),
-              const SizedBox(height: 10),
-              Text(
-                hadith.preview,
-                style: const TextStyle(fontSize: 15, height: 1.6),
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
+              const SizedBox(width: 12),
+              // Content
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      hadith.preview,
+                      style: TextStyle(
+                        fontSize: 14.5,
+                        height: 1.6,
+                        color: cs.onSurface,
+                      ),
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Icon(Icons.graphic_eq_rounded,
+                            size: 14,
+                            color: cs.primary.withValues(alpha: 0.5)),
+                        const SizedBox(width: 4),
+                        Text(
+                          'AI ஒலி',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                            color: cs.primary.withValues(alpha: 0.6),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 4),
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Icon(Icons.chevron_right_rounded,
+                    size: 20, color: cs.onSurface.withValues(alpha: 0.25)),
               ),
             ],
           ),

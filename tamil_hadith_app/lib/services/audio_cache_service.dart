@@ -5,57 +5,162 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
-/// Caches synthesized TTS audio per hadith number on disk.
+/// Permanently caches synthesized TTS audio per hadith number on disk.
 ///
-/// On first play, the streaming chunks are saved to a WAV file.
+/// Uses the **documents** directory (NOT cache) so files survive
+/// Android cache clears. Path: <docs>/hadith_audio/<id>.wav
+///
+/// On first play the streaming chunks are saved to a WAV file.
 /// Subsequent plays load directly from cache — zero synthesis latency.
 class AudioCacheService {
-  String? _cacheDir;
+  String? _audioDir;
 
-  /// Initialize the cache directory.
+  /// In-flight write futures keyed by hadith number.
+  /// Prevents concurrent writes to the same file (double-tap crash).
+  final Map<int, Future<String>> _writeLocks = {};
+
+  /// Maximum cache size in bytes (1 GB). Oldest files are evicted when exceeded.
+  static const int maxCacheBytes = 1024 * 1024 * 1024;
+
+  /// Initialize the permanent audio directory.
   Future<void> initialize() async {
-    final dir = await getApplicationCacheDirectory();
-    _cacheDir = p.join(dir.path, 'tts_cache');
-    await Directory(_cacheDir!).create(recursive: true);
+    final dir = await getApplicationDocumentsDirectory();
+    _audioDir = p.join(dir.path, 'hadith_audio');
+    await Directory(_audioDir!).create(recursive: true);
+  }
+
+  /// Ensure directory is ready (lazy init for late callers).
+  Future<void> _ensureDir() async {
+    if (_audioDir != null) return;
+    final dir = await getApplicationDocumentsDirectory();
+    _audioDir = p.join(dir.path, 'hadith_audio');
+    await Directory(_audioDir!).create(recursive: true);
   }
 
   /// Get the cache file path for a hadith number.
   String _cachePath(int hadithNumber) {
-    return p.join(_cacheDir!, '$hadithNumber.wav');
+    return p.join(_audioDir!, '$hadithNumber.wav');
   }
 
   /// Check if audio is cached for a given hadith number.
   bool isCached(int hadithNumber) {
-    if (_cacheDir == null) return false;
+    if (_audioDir == null) return false;
     return File(_cachePath(hadithNumber)).existsSync();
   }
 
   /// Get the cached audio file path, or null if not cached.
+  /// Performs a corruption check — deletes files < 1 KB (half-written).
   String? getCachedPath(int hadithNumber) {
-    if (!isCached(hadithNumber)) return null;
-    return _cachePath(hadithNumber);
+    if (_audioDir == null) return null;
+    final file = File(_cachePath(hadithNumber));
+    if (!file.existsSync()) return null;
+
+    // Corruption guard: a valid WAV must be > 1 KB (header + some audio)
+    if (file.lengthSync() < 1000) {
+      debugPrint('AudioCache: Corrupt file for #$hadithNumber — deleting');
+      try { file.deleteSync(); } catch (_) {}
+      return null;
+    }
+
+    return file.path;
   }
 
-  /// Save PCM float32 audio as a WAV file in the cache.
+  /// Get the number of cached hadith audio files.
+  Future<int> getCachedCount() async {
+    await _ensureDir();
+    final dir = Directory(_audioDir!);
+    if (!await dir.exists()) return 0;
+    int count = 0;
+    await for (final entity in dir.list()) {
+      if (entity is File && entity.path.endsWith('.wav')) count++;
+    }
+    return count;
+  }
+
+  /// Save PCM float32 audio as a WAV file in the permanent store.
+  /// Uses a per-hadith write lock so double-taps never corrupt the file.
   Future<String> saveToCache(int hadithNumber, Float32List pcmData, {int sampleRate = 16000}) async {
-    _cacheDir ??= (await (() async {
-      final dir = await getApplicationCacheDirectory();
-      return p.join(dir.path, 'tts_cache');
-    })());
-    await Directory(_cacheDir!).create(recursive: true);
+    // If a write for this hadith is already in flight, return its future.
+    if (_writeLocks.containsKey(hadithNumber)) {
+      return _writeLocks[hadithNumber]!;
+    }
+
+    final future = _saveInternal(hadithNumber, pcmData, sampleRate);
+    _writeLocks[hadithNumber] = future;
+
+    try {
+      final path = await future;
+      return path;
+    } finally {
+      _writeLocks.remove(hadithNumber);
+    }
+  }
+
+  /// Internal save — writes WAV with flush, then enforces cache size limit.
+  Future<String> _saveInternal(int hadithNumber, Float32List pcmData, int sampleRate) async {
+    await _ensureDir();
 
     final wavBytes = pcmToWav(pcmData, sampleRate);
     final file = File(_cachePath(hadithNumber));
-    await file.writeAsBytes(wavBytes);
+    await file.writeAsBytes(wavBytes, flush: true);
     debugPrint('AudioCache: Saved hadith #$hadithNumber '
         '(${pcmData.length} samples, ${(pcmData.length / sampleRate).toStringAsFixed(1)}s)');
+
+    // Enforce cache size limit in the background
+    _enforceCacheLimit().catchError((e) {
+      debugPrint('AudioCache: eviction error: $e');
+    });
+
     return file.path;
+  }
+
+  /// Evict oldest cached files until total size is below 80% of [maxCacheBytes].
+  Future<void> _enforceCacheLimit() async {
+    await _ensureDir();
+    final dir = Directory(_audioDir!);
+    if (!await dir.exists()) return;
+
+    // Collect files with their sizes and modification times
+    final List<File> files = [];
+    int totalSize = 0;
+    await for (final entity in dir.list()) {
+      if (entity is File && entity.path.endsWith('.wav')) {
+        files.add(entity);
+        totalSize += await entity.length();
+      }
+    }
+
+    if (totalSize <= maxCacheBytes) return;
+
+    debugPrint('AudioCache: Cache ${(totalSize / (1024 * 1024)).toStringAsFixed(0)} MB '
+        'exceeds limit ${(maxCacheBytes / (1024 * 1024)).toStringAsFixed(0)} MB — evicting');
+
+    // Sort oldest first
+    files.sort((a, b) => a.lastModifiedSync().compareTo(b.lastModifiedSync()));
+
+    final target = (maxCacheBytes * 0.8).toInt();
+    for (final file in files) {
+      if (totalSize <= target) break;
+      try {
+        final len = await file.length();
+        await file.delete();
+        totalSize -= len;
+        debugPrint('AudioCache: Evicted ${p.basename(file.path)}');
+      } catch (_) {}
+    }
+  }
+
+  /// Delete a single hadith's cached audio.
+  Future<void> deleteCached(int hadithNumber) async {
+    await _ensureDir();
+    final file = File(_cachePath(hadithNumber));
+    if (await file.exists()) await file.delete();
   }
 
   /// Clear all cached audio files.
   Future<void> clearCache() async {
-    if (_cacheDir == null) return;
-    final dir = Directory(_cacheDir!);
+    await _ensureDir();
+    final dir = Directory(_audioDir!);
     if (await dir.exists()) {
       await dir.delete(recursive: true);
       await dir.create(recursive: true);
@@ -65,8 +170,8 @@ class AudioCacheService {
 
   /// Get total cache size in bytes.
   Future<int> getCacheSize() async {
-    if (_cacheDir == null) return 0;
-    final dir = Directory(_cacheDir!);
+    await _ensureDir();
+    final dir = Directory(_audioDir!);
     if (!await dir.exists()) return 0;
     int total = 0;
     await for (final entity in dir.list()) {
@@ -129,10 +234,10 @@ class AudioCacheService {
     buffer.setUint8(offset++, 0x61); // 'a'
     buffer.setUint32(offset, dataSize, Endian.little);
 
-    // Batch-convert float32 → int16
+    // Vectorized float32 → int16 (avoid double-clamp on floats)
     final samples = Int16List(numSamples);
     for (int i = 0; i < numSamples; i++) {
-      samples[i] = (pcmData[i].clamp(-1.0, 1.0) * 32767).toInt();
+      samples[i] = (pcmData[i] * 32767).toInt().clamp(-32767, 32767);
     }
     final sampleBytes = samples.buffer.asUint8List();
     final result = Uint8List(44 + dataSize);

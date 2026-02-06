@@ -7,8 +7,14 @@ import '../models/hadith.dart';
 import '../services/tts_engine.dart';
 import '../services/audio_player_service.dart';
 import '../services/audio_cache_service.dart';
+import '../services/bookmark_service.dart';
 
 /// Detail screen for a single hadith with TTS audio playback
+/// Shared singletons for TTS engine and audio cache.
+/// Used by both HadithDetailScreen and PreCacheService.
+final sharedTtsEngine = TtsEngine();
+final sharedAudioCache = AudioCacheService();
+
 class HadithDetailScreen extends StatefulWidget {
   final Hadith hadith;
 
@@ -20,15 +26,19 @@ class HadithDetailScreen extends StatefulWidget {
 
 class _HadithDetailScreenState extends State<HadithDetailScreen> {
   // TTS engine and audio player are obtained from the app-level singletons
-  static final TtsEngine _ttsEngine = TtsEngine();
+  static final TtsEngine ttsEngine = sharedTtsEngine;
   static final AudioPlayerService _audioPlayer = AudioPlayerService();
-  static final AudioCacheService _audioCache = AudioCacheService();
+  static final AudioCacheService audioCache = sharedAudioCache;
+  static final BookmarkService _bookmarkService = BookmarkService();
   static bool _servicesInitialized = false;
 
   bool _isSynthesizing = false;
   bool _isPlaying = false;
   String _statusText = '';
   double _fontSize = 18.0;
+  double _playbackSpeed = 1.0;
+
+  static const List<double> _speedOptions = [0.75, 1.0, 1.25, 1.5];
 
   @override
   void initState() {
@@ -44,9 +54,9 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
   Future<void> _initServices() async {
     if (!_servicesInitialized) {
       await _audioPlayer.initialize();
-      await _audioCache.initialize();
+      await audioCache.initialize();
       try {
-        await _ttsEngine.initialize();
+        await ttsEngine.initialize();
       } catch (e) {
         debugPrint('TTS init warning: $e');
       }
@@ -56,150 +66,260 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
     return Scaffold(
-      appBar: AppBar(
-        title: Text('ஹதீஸ் #${widget.hadith.hadithNumber}'),
-        actions: [
-          // Font size controls
-          IconButton(
-            icon: const Icon(Icons.text_decrease),
-            onPressed: () => setState(() => _fontSize = (_fontSize - 2).clamp(14, 30)),
-            tooltip: 'எழுத்து சிறிதாக்கு',
-          ),
-          IconButton(
-            icon: const Icon(Icons.text_increase),
-            onPressed: () => setState(() => _fontSize = (_fontSize + 2).clamp(14, 30)),
-            tooltip: 'எழுத்து பெரிதாக்கு',
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          // Hadith content
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Book & number badge
-                  Wrap(
-                    spacing: 8,
-                    children: [
-                      _Badge(
-                        text: widget.hadith.book,
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                      _Badge(
-                        text: 'ஹதீஸ் #${widget.hadith.hadithNumber}',
-                        color: Theme.of(context).colorScheme.secondary,
-                      ),
+      body: CustomScrollView(
+        slivers: [
+          // ── Collapsing header with hadith info ──
+          SliverAppBar(
+            expandedHeight: 130,
+            floating: false,
+            pinned: true,
+            title: Text('ஹதீஸ் #${widget.hadith.hadithNumber}'),
+            actions: [
+              IconButton(
+                icon: Icon(
+                  _bookmarkService.isBookmarked(widget.hadith.hadithNumber)
+                      ? Icons.bookmark_rounded
+                      : Icons.bookmark_outline_rounded,
+                ),
+                onPressed: _toggleBookmark,
+                tooltip: 'புக்மார்க்',
+              ),
+              IconButton(
+                icon: const Icon(Icons.text_decrease_rounded),
+                onPressed: () =>
+                    setState(() => _fontSize = (_fontSize - 2).clamp(14, 30)),
+                tooltip: 'எழுத்து சிறிதாக்கு',
+              ),
+              IconButton(
+                icon: const Icon(Icons.text_increase_rounded),
+                onPressed: () =>
+                    setState(() => _fontSize = (_fontSize + 2).clamp(14, 30)),
+                tooltip: 'எழுத்து பெரிதாக்கு',
+              ),
+            ],
+            flexibleSpace: FlexibleSpaceBar(
+              background: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      cs.primary,
+                      cs.primary.withValues(alpha: 0.8),
                     ],
                   ),
-                  if (widget.hadith.chapter.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    Text(
-                      widget.hadith.chapter,
-                      style: TextStyle(
-                        fontSize: _fontSize + 2,
-                        fontWeight: FontWeight.bold,
-                        color: Theme.of(context).colorScheme.primary,
+                ),
+                child: SafeArea(
+                  child: Align(
+                    alignment: Alignment.bottomLeft,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                      child: Row(
+                        children: [
+                          _InfoChip(
+                            icon: Icons.auto_stories_rounded,
+                            label: widget.hadith.book,
+                          ),
+                          const SizedBox(width: 8),
+                          _InfoChip(
+                            icon: Icons.tag_rounded,
+                            label: '#${widget.hadith.hadithNumber}',
+                          ),
+                        ],
                       ),
                     ),
-                  ],
-                  const Divider(height: 24),
-                  // Main hadith text
-                  SelectableText(
-                    widget.hadith.textTamil,
-                    style: TextStyle(
-                      fontSize: _fontSize,
-                      height: 1.8,
-                      color: Theme.of(context).colorScheme.onSurface,
-                    ),
                   ),
-                  const SizedBox(height: 80), // Space for bottom bar
-                ],
+                ),
               ),
             ),
           ),
-          // TTS playback bar
-          _buildPlaybackBar(context),
+
+          // ── Chapter heading ──
+          if (widget.hadith.chapter.isNotEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: cs.primaryContainer.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                        color: cs.primaryContainer.withValues(alpha: 0.5)),
+                  ),
+                  child: Text(
+                    widget.hadith.chapter,
+                    style: TextStyle(
+                      fontSize: _fontSize,
+                      fontWeight: FontWeight.w700,
+                      color: cs.onPrimaryContainer,
+                      height: 1.5,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+          // ── Hadith text body ──
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
+              child: SelectableText(
+                widget.hadith.textTamil,
+                style: TextStyle(
+                  fontSize: _fontSize,
+                  height: 1.85,
+                  color: cs.onSurface,
+                  letterSpacing: 0.1,
+                ),
+              ),
+            ),
+          ),
         ],
       ),
+
+      // ── Bottom playback bar ──
+      bottomNavigationBar: _buildPlaybackBar(context),
     );
   }
 
   Widget _buildPlaybackBar(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final showSpeed = _isPlaying ||
+        _audioPlayer.player.processingState != ProcessingState.idle;
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 8,
-            offset: const Offset(0, -2),
-          ),
-        ],
+        color: cs.surface,
+        border: Border(top: BorderSide(color: cs.outlineVariant, width: 0.5)),
       ),
       child: SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (_statusText.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Text(
-                  _statusText,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Status text
+              if (_statusText.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Text(
+                    _statusText,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: cs.onSurface.withValues(alpha: 0.5),
+                    ),
                   ),
                 ),
-              ),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // Play/Pause button
-                FilledButton.icon(
-                  onPressed: _isSynthesizing ? null : _onPlayPause,
-                  icon: _isSynthesizing
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
+
+              // Main controls row
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // Play/Pause
+                  _isSynthesizing
+                      ? FilledButton.icon(
+                          onPressed: null,
+                          icon: const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          ),
+                          label: const Text('ஒலிப்பதிவு...'),
+                          style: FilledButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 20, vertical: 12),
                           ),
                         )
-                      : Icon(_isPlaying ? Icons.pause : Icons.play_arrow),
-                  label: Text(
-                    _isSynthesizing
-                        ? 'ஒலிப்பதிவு...'
-                        : _isPlaying
-                            ? 'நிறுத்து'
-                            : 'ஒலிக்கவும்',
-                  ),
-                  style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                      : FilledButton.icon(
+                          onPressed: _onPlayPause,
+                          icon: Icon(
+                            _isPlaying
+                                ? Icons.pause_rounded
+                                : Icons.play_arrow_rounded,
+                            size: 22,
+                          ),
+                          label: Text(
+                            _isPlaying ? 'நிறுத்து' : 'ஒலிக்கவும்',
+                          ),
+                          style: FilledButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 20, vertical: 12),
+                          ),
+                        ),
+                  if (_isPlaying) ...[
+                    const SizedBox(width: 10),
+                    IconButton.outlined(
+                      onPressed: _onStop,
+                      icon: const Icon(Icons.stop_rounded, size: 20),
+                      style: IconButton.styleFrom(
+                        side: BorderSide(color: cs.outlineVariant),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+
+              // Speed chips
+              if (showSpeed)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.speed_rounded,
+                          size: 15,
+                          color: cs.onSurface.withValues(alpha: 0.4)),
+                      const SizedBox(width: 6),
+                      for (final speed in _speedOptions)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 2),
+                          child: ChoiceChip(
+                            label: Text('${speed}x',
+                                style: const TextStyle(fontSize: 11)),
+                            selected: _playbackSpeed == speed,
+                            onSelected: (_) => _onSpeedChange(speed),
+                            visualDensity: VisualDensity.compact,
+                            padding: EdgeInsets.zero,
+                            labelPadding:
+                                const EdgeInsets.symmetric(horizontal: 6),
+                            materialTapTargetSize:
+                                MaterialTapTargetSize.shrinkWrap,
+                          ),
+                        ),
+                    ],
                   ),
                 ),
-                const SizedBox(width: 12),
-                // Stop button
-                if (_isPlaying)
-                  IconButton.filled(
-                    onPressed: _onStop,
-                    icon: const Icon(Icons.stop),
-                  ),
-              ],
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
   Future<void> _onPlayPause() async {
+    // ── Global crash protection: never let TTS crash the app ──
+    try {
+      await _onPlayPauseInternal();
+    } catch (e, stack) {
+      debugPrint('TTS CRASH caught: $e\n$stack');
+      if (mounted) {
+        setState(() {
+          _statusText = 'ஒலிப்பதிவு பிழை ஏற்பட்டது';
+          _isSynthesizing = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _onPlayPauseInternal() async {
     if (_isPlaying) {
       await _audioPlayer.pause();
       return;
@@ -212,10 +332,26 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
       return;
     }
 
+    // ── Model-not-downloaded guard ──
+    if (!ttsEngine.isNativeAvailable) {
+      if (mounted) {
+        setState(() => _statusText = '');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('தமிழ் ஒலி மாதிரி பதிவிறக்கம் செய்யப்படவில்லை.\n'
+                'முகப்புப் பக்கத்திலிருந்து பதிவிறக்கவும்.'),
+            duration: const Duration(seconds: 3),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      return;
+    }
+
     final hadithNum = widget.hadith.hadithNumber;
 
     // ── Check audio cache first ──
-    final cachedPath = _audioCache.getCachedPath(hadithNum);
+    final cachedPath = audioCache.getCachedPath(hadithNum);
     if (cachedPath != null) {
       debugPrint('AudioCache: Hit for hadith #$hadithNum');
       setState(() => _statusText = 'தற்காலிக சேமிப்பிலிருந்து ஒலிக்கிறது...');
@@ -239,9 +375,9 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
       int chunkCount = 0;
       final List<Float32List> allChunks = []; // Collect for caching
 
-      await for (final chunkAudio in _ttsEngine.synthesizeStreaming(text)) {
+      await for (final chunkAudio in ttsEngine.synthesizeStreaming(text)) {
         if (!mounted) {
-          _ttsEngine.cancelSynthesis();
+          ttsEngine.cancelSynthesis();
           break;
         }
 
@@ -283,13 +419,21 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
           combined.setRange(offset, offset + chunk.length, chunk);
           offset += chunk.length;
         }
+        // Memory protection: release chunk references immediately
+        allChunks.clear();
+
         // Fire-and-forget: save to disk cache
-        _audioCache.saveToCache(hadithNum, combined).then((_) {
+        audioCache.saveToCache(hadithNum, combined).then((_) {
           debugPrint('AudioCache: Saved hadith #$hadithNum to cache');
         }).catchError((e) {
           debugPrint('AudioCache: Failed to save hadith #$hadithNum: $e');
         });
       }
+
+      // ── Cleanup streaming chunk files after playback completes ──
+      _audioPlayer.awaitStreamingComplete().then((_) {
+        _audioPlayer.cleanupChunks();
+      }).catchError((_) {});
     } catch (e) {
       debugPrint('TTS Error: $e');
       if (mounted) {
@@ -302,8 +446,13 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
   }
 
   Future<void> _onStop() async {
-    _ttsEngine.cancelSynthesis();
-    await _audioPlayer.stop();
+    try {
+      ttsEngine.cancelSynthesis();
+      await _audioPlayer.stop();
+      await _audioPlayer.cleanupChunks();
+    } catch (e) {
+      debugPrint('Stop error: $e');
+    }
     if (mounted) {
       setState(() {
         _statusText = '';
@@ -311,30 +460,64 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
       });
     }
   }
+
+  void _onSpeedChange(double speed) {
+    setState(() => _playbackSpeed = speed);
+    _audioPlayer.setSpeed(speed);
+  }
+
+  Future<void> _toggleBookmark() async {
+    final hadith = widget.hadith;
+    final nowBookmarked = await _bookmarkService.toggleBookmark(
+      hadithNumber: hadith.hadithNumber,
+      book: hadith.book,
+      chapter: hadith.chapter,
+      textTamil: hadith.textTamil,
+    );
+    if (mounted) {
+      setState(() {}); // Rebuild to update icon
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(nowBookmarked
+              ? 'புக்மார்க் சேர்க்கப்பட்டது'
+              : 'புக்மார்க் நீக்கப்பட்டது'),
+          duration: const Duration(seconds: 1),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
 }
 
-class _Badge extends StatelessWidget {
-  final String text;
-  final Color color;
+/// White translucent info chip for the collapsing header
+class _InfoChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
 
-  const _Badge({required this.text, required this.color});
+  const _InfoChip({required this.icon, required this.label});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
+        color: Colors.white.withValues(alpha: 0.18),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
-      child: Text(
-        text,
-        style: TextStyle(
-          color: color,
-          fontWeight: FontWeight.w600,
-          fontSize: 13,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: Colors.white70),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }
