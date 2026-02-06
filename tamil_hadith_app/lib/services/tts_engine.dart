@@ -84,8 +84,39 @@ class TtsEngine {
   }
 
   /// Maximum tokens per chunk to keep each FFI call short and avoid ANR.
-  /// ~800 tokens ≈ 1-2s inference on mid-range phone CPU.
-  static const int _maxTokensPerChunk = 800;
+  /// ~1200 tokens ≈ 2-3s inference on a mid-range phone CPU.
+  static const int _maxTokensPerChunk = 1200;
+
+  /// Crossfade length in samples (25 ms at 16 kHz) to smooth chunk boundaries.
+  static const int _crossfadeSamples = 400;
+
+  /// Amplitude threshold below which samples are considered silence.
+  static const double _silenceThreshold = 0.01;
+
+  /// Islamic honorific abbreviations commonly used in Tamil hadith texts.
+  /// Expanded before tokenization so the TTS model pronounces the full form.
+  static const Map<String, String> _honorificExpansions = {
+    'ஸல்': 'ஸல்லலாஹு அலைஹிவஸல்லம்',
+    'அலை': 'அலைஹிவஸல்லம்',
+    'ரலி': 'ரலியல்லாஹு அன்ஹா',
+  };
+
+  /// Expand abbreviated honorifics so the model speaks the full phrase.
+  /// Only expands when the abbreviation appears as a standalone word
+  /// (surrounded by whitespace / punctuation / parentheses).
+  String _expandHonorifics(String text) {
+    String result = text;
+    for (final entry in _honorificExpansions.entries) {
+      // Word-boundary: preceded/followed by space, punctuation, parens, or start/end
+      final pattern = RegExp(
+        r'(?<=[\s\(\)\[\].,;:!?\u0964]|^)' +
+        RegExp.escape(entry.key) +
+        r'(?=[\s\(\)\[\].,;:!?\u0964]|$)',
+      );
+      result = result.replaceAll(pattern, entry.value);
+    }
+    return result;
+  }
 
   /// Synthesize Tamil text to PCM audio (Float32, 16kHz mono)
   /// Returns raw PCM float32 samples.
@@ -102,14 +133,17 @@ class TtsEngine {
       throw StateError('TTS engine not initialized');
     }
 
+    // Expand honorific abbreviations before tokenization
+    final normalizedText = _expandHonorifics(text);
+
     // Tokenize the text (add_blank is handled by tokenizer)
-    final tokenIds = _tokenizer.tokenize(text);
+    final tokenIds = _tokenizer.tokenize(normalizedText);
     if (tokenIds.isEmpty) {
       debugPrint('TTS: Empty token sequence for text: $text');
       return null;
     }
 
-    debugPrint('TTS: Tokenized ${text.length} chars -> ${tokenIds.length} tokens (with blanks)');
+    debugPrint('TTS: Tokenized ${normalizedText.length} chars -> ${tokenIds.length} tokens (with blanks)');
 
     // If native engine is available, use it
     if (isNativeAvailable && _bindings != null) {
@@ -118,7 +152,7 @@ class TtsEngine {
         return _synthesizeNative(tokenIds, noiseScale, lengthScale, noiseScaleW);
       }
       // Long input – split into chunks to avoid ANR
-      return _synthesizeChunked(text, noiseScale, lengthScale, noiseScaleW);
+      return _synthesizeChunked(normalizedText, noiseScale, lengthScale, noiseScaleW);
     }
 
     // Software fallback: generate placeholder audio
@@ -126,8 +160,8 @@ class TtsEngine {
   }
 
   /// Split [text] into sentence-level chunks, synthesize each one separately
-  /// and concatenate the PCM results. An async yield between chunks lets the
-  /// main isolate process UI events so the system won't fire an ANR.
+  /// and join with crossfade. An async yield between chunks lets the main
+  /// isolate process UI events so the system won't fire an ANR.
   Future<Float32List?> _synthesizeChunked(
     String text,
     double noiseScale,
@@ -138,7 +172,6 @@ class TtsEngine {
     debugPrint('TTS: Split text into ${sentences.length} chunks for synthesis');
 
     final List<Float32List> audioParts = [];
-    int totalSamples = 0;
 
     for (int i = 0; i < sentences.length; i++) {
       final chunk = sentences[i];
@@ -157,25 +190,90 @@ class TtsEngine {
         chunkTokens, noiseScale, lengthScale, noiseScaleW,
       );
       if (audio != null && audio.isNotEmpty) {
-        audioParts.add(audio);
-        totalSamples += audio.length;
+        // Trim leading/trailing silence so chunks join cleanly
+        final trimmed = _trimSilence(audio);
+        if (trimmed.isNotEmpty) audioParts.add(trimmed);
       }
     }
 
     if (audioParts.isEmpty) return null;
     if (audioParts.length == 1) return audioParts.first;
 
-    // Concatenate all chunks into a single buffer
-    final combined = Float32List(totalSamples);
-    int offset = 0;
-    for (final part in audioParts) {
-      combined.setRange(offset, offset + part.length, part);
-      offset += part.length;
+    // Crossfade-join all chunks into a single buffer
+    return _crossfadeJoin(audioParts);
+  }
+
+  /// Remove leading and trailing near-silence samples from [audio].
+  Float32List _trimSilence(Float32List audio) {
+    int start = 0;
+    int end = audio.length;
+
+    // Scan forward past silence
+    while (start < end && audio[start].abs() < _silenceThreshold) {
+      start++;
+    }
+    // Scan backward past silence
+    while (end > start && audio[end - 1].abs() < _silenceThreshold) {
+      end--;
     }
 
-    debugPrint('TTS: Combined ${audioParts.length} chunks -> '
-        '$totalSamples samples (${(totalSamples / VitsConfig.sampleRate).toStringAsFixed(2)}s)');
-    return combined;
+    // Keep a tiny ramp margin (64 samples ≈ 4 ms) so crossfade has material
+    start = (start - 64).clamp(0, audio.length);
+    end = (end + 64).clamp(0, audio.length);
+
+    if (start >= end) return Float32List(0);
+    return Float32List.sublistView(audio, start, end);
+  }
+
+  /// Join audio chunks using a short linear crossfade to eliminate gaps.
+  Float32List _crossfadeJoin(List<Float32List> parts) {
+    final int fade = _crossfadeSamples;
+
+    // Calculate total length accounting for overlaps
+    int totalLen = parts[0].length;
+    for (int i = 1; i < parts.length; i++) {
+      final overlap = min(fade, min(parts[i - 1].length, parts[i].length));
+      totalLen += parts[i].length - overlap;
+    }
+
+    final combined = Float32List(totalLen);
+
+    // Copy first part
+    combined.setRange(0, parts[0].length, parts[0]);
+    int writePos = parts[0].length;
+
+    for (int p = 1; p < parts.length; p++) {
+      final prev = parts[p - 1];
+      final curr = parts[p];
+      final overlap = min(fade, min(prev.length, curr.length));
+
+      // Back up write position by overlap
+      writePos -= overlap;
+
+      // Crossfade the overlapping region
+      for (int i = 0; i < overlap; i++) {
+        final t = i / overlap; // 0 → 1
+        final fadeOut = combined[writePos + i] * (1.0 - t);
+        final fadeIn = curr[i] * t;
+        combined[writePos + i] = fadeOut + fadeIn;
+      }
+
+      // Copy the rest of the current chunk after the overlap
+      if (overlap < curr.length) {
+        combined.setRange(
+          writePos + overlap,
+          writePos + curr.length,
+          curr,
+          overlap,
+        );
+      }
+      writePos += curr.length;
+    }
+
+    final actualLen = writePos.clamp(0, combined.length);
+    debugPrint('TTS: Crossfade-joined ${parts.length} chunks -> '
+        '$actualLen samples (${(actualLen / VitsConfig.sampleRate).toStringAsFixed(2)}s)');
+    return Float32List.sublistView(combined, 0, actualLen);
   }
 
   /// Split Tamil text into sentence-sized pieces.
@@ -252,11 +350,9 @@ class TtsEngine {
         final outputPtr = outputDataPtr.value;
 
         if (outputLen > 0 && outputPtr != nullptr) {
-          // Copy output to Dart-managed buffer
-          final audioData = Float32List(outputLen);
-          for (int i = 0; i < outputLen; i++) {
-            audioData[i] = outputPtr[i];
-          }
+          // Zero-copy view then bulk-copy to Dart-managed buffer
+          final nativeView = outputPtr.asTypedList(outputLen);
+          final audioData = Float32List.fromList(nativeView);
           _bindings!.freeOutput(outputPtr);
           debugPrint('TTS: Synthesized $outputLen samples (${(outputLen / VitsConfig.sampleRate).toStringAsFixed(2)}s)');
           return audioData;

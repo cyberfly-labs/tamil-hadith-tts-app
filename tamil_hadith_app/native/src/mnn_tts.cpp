@@ -3,6 +3,7 @@
 // MNN Module API headers (required for dynamic-shape VITS model)
 #include <MNN/expr/Expr.hpp>
 #include <MNN/expr/Module.hpp>
+#include <MNN/expr/Executor.hpp>
 #include <MNN/expr/NeuralNetWorkOp.hpp>
 #include <MNN/expr/MathOp.hpp>
 #include <MNN/MNNForwardType.h>
@@ -40,9 +41,15 @@ MNN_TTS_Engine* tts_create_engine(const char* model_path, int thread_count) {
     Module::BackendInfo backend;
     backend.type = MNN_FORWARD_CPU;
     MNN::BackendConfig backendConfig;
-    backendConfig.precision = MNN::BackendConfig::Precision_Low;
+    // Use Normal precision — the fp16_int8 model already encodes its own
+    // quantisation; forcing Precision_Low on top degrades audio quality.
+    backendConfig.precision = MNN::BackendConfig::Precision_Normal;
     backendConfig.memory = MNN::BackendConfig::Memory_Low;
     backend.config = &backendConfig;
+
+    // Set thread count globally for the CPU executor
+    MNN::Express::Executor::getGlobalExecutor()->setGlobalExecutorConfig(
+        MNN_FORWARD_CPU, backendConfig, engine->thread_count);
 
     Module::Config config;
     config.shapeMutable = true;  // VITS has dynamic sequence length

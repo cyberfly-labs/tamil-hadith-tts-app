@@ -61,7 +61,8 @@ class AudioPlayerService {
     final dataSize = numSamples * blockAlign;
     final fileSize = 36 + dataSize;
 
-    final buffer = ByteData(44 + dataSize);
+    // Only write the 44-byte WAV header into ByteData; PCM data is bulk-copied
+    final buffer = ByteData(44);
     int offset = 0;
 
     // RIFF header
@@ -104,15 +105,18 @@ class AudioPlayerService {
     buffer.setUint32(offset, dataSize, Endian.little);
     offset += 4;
 
-    // PCM samples: convert float32 [-1, 1] to int16
+    // Batch-convert float32 → int16 using typed list for speed
+    final samples = Int16List(numSamples);
     for (int i = 0; i < numSamples; i++) {
-      double sample = pcmData[i].clamp(-1.0, 1.0);
-      int intSample = (sample * 32767).toInt();
-      buffer.setInt16(offset, intSample, Endian.little);
-      offset += 2;
+      samples[i] = (pcmData[i].clamp(-1.0, 1.0) * 32767).toInt();
     }
-
-    return buffer.buffer.asUint8List();
+    final sampleBytes = samples.buffer.asUint8List();
+    final result = Uint8List(44 + dataSize);
+    // Copy header
+    result.setRange(0, 44, buffer.buffer.asUint8List());
+    // Copy PCM data
+    result.setRange(44, 44 + dataSize, sampleBytes);
+    return result;
   }
 
   /// Get the player stream for listening to state changes
