@@ -86,6 +86,12 @@ class AudioPlayerService {
     );
   }
 
+  /// Play a WAV file directly from disk (e.g. from audio cache).
+  Future<void> playFromFile(String filePath) async {
+    await _player.setFilePath(filePath);
+    await _player.play();
+  }
+
   /// Stop current playback
   Future<void> stop() async {
     await _player.stop();

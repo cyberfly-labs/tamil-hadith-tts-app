@@ -1,9 +1,12 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 
 import '../models/hadith.dart';
 import '../services/tts_engine.dart';
 import '../services/audio_player_service.dart';
+import '../services/audio_cache_service.dart';
 
 /// Detail screen for a single hadith with TTS audio playback
 class HadithDetailScreen extends StatefulWidget {
@@ -19,6 +22,7 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
   // TTS engine and audio player are obtained from the app-level singletons
   static final TtsEngine _ttsEngine = TtsEngine();
   static final AudioPlayerService _audioPlayer = AudioPlayerService();
+  static final AudioCacheService _audioCache = AudioCacheService();
   static bool _servicesInitialized = false;
 
   bool _isSynthesizing = false;
@@ -40,6 +44,7 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
   Future<void> _initServices() async {
     if (!_servicesInitialized) {
       await _audioPlayer.initialize();
+      await _audioCache.initialize();
       try {
         await _ttsEngine.initialize();
       } catch (e) {
@@ -207,6 +212,18 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
       return;
     }
 
+    final hadithNum = widget.hadith.hadithNumber;
+
+    // ── Check audio cache first ──
+    final cachedPath = _audioCache.getCachedPath(hadithNum);
+    if (cachedPath != null) {
+      debugPrint('AudioCache: Hit for hadith #$hadithNum');
+      setState(() => _statusText = 'தற்காலிக சேமிப்பிலிருந்து ஒலிக்கிறது...');
+      await _audioPlayer.playFromFile(cachedPath);
+      return;
+    }
+
+    // ── No cache — synthesize and save ──
     setState(() {
       _isSynthesizing = true;
       _statusText = 'உரையை ஒலியாக மாற்றுகிறது...';
@@ -220,6 +237,7 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
 
       bool firstChunk = true;
       int chunkCount = 0;
+      final List<Float32List> allChunks = []; // Collect for caching
 
       await for (final chunkAudio in _ttsEngine.synthesizeStreaming(text)) {
         if (!mounted) {
@@ -228,6 +246,7 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
         }
 
         chunkCount++;
+        allChunks.add(chunkAudio);
         await _audioPlayer.addStreamingChunk(chunkAudio);
 
         if (firstChunk) {
@@ -252,6 +271,24 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
         });
       } else if (mounted) {
         setState(() => _statusText = 'ஒலிக்கிறது...');
+      }
+
+      // ── Save to cache in background ──
+      if (allChunks.isNotEmpty) {
+        // Concatenate all chunks into a single PCM buffer
+        final totalLen = allChunks.fold<int>(0, (sum, c) => sum + c.length);
+        final combined = Float32List(totalLen);
+        int offset = 0;
+        for (final chunk in allChunks) {
+          combined.setRange(offset, offset + chunk.length, chunk);
+          offset += chunk.length;
+        }
+        // Fire-and-forget: save to disk cache
+        _audioCache.saveToCache(hadithNum, combined).then((_) {
+          debugPrint('AudioCache: Saved hadith #$hadithNum to cache');
+        }).catchError((e) {
+          debugPrint('AudioCache: Failed to save hadith #$hadithNum: $e');
+        });
       }
     } catch (e) {
       debugPrint('TTS Error: $e');

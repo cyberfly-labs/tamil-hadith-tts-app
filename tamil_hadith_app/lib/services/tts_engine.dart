@@ -64,8 +64,8 @@ class TtsEngine {
 
     // Copy model to writable location
     _modelPath = await _copyAssetToFile(
-      'assets/models/model_fp16_int8.mnn',
-      'model_fp16_int8.mnn',
+      'assets/models/model_fp32.mnn',
+      'model_fp32.mnn',
     );
     debugPrint('TTS Model copied to: $_modelPath');
 
@@ -93,8 +93,8 @@ class TtsEngine {
   }
 
   /// Maximum tokens per chunk to keep each FFI call short and avoid ANR.
-  /// ~1200 tokens ≈ 2-3s inference on a mid-range phone CPU.
-  static const int _maxTokensPerChunk = 1200;
+  /// ~700 tokens ≈ 1-2s inference on mid-range phone CPU.
+  static const int _maxTokensPerChunk = 700;
 
   /// Crossfade length in samples (25 ms at 16 kHz) to smooth chunk boundaries.
   static const int _crossfadeSamples = 400;
@@ -102,28 +102,78 @@ class TtsEngine {
   /// Amplitude threshold below which samples are considered silence.
   static const double _silenceThreshold = 0.01;
 
-  /// Islamic honorific abbreviations commonly used in Tamil hadith texts.
-  /// Expanded before tokenization so the TTS model pronounces the full form.
+  // ── Fix #5: Parenthesized abbreviation patterns ──
+  // Matches patterns like (ஸல்), (ரலி), (அலை) with optional spaces
+  static final RegExp _parenAbbrevPattern = RegExp(
+    r'\(\s*(ஸல்|அலை|ரலி)\s*\)',
+  );
+
+  // ── Fix #1 + #5: Full Islamic text normalization map ──
+  // Applied after stripping parentheses, on standalone words.
   static const Map<String, String> _honorificExpansions = {
-    'ஸல்': 'ஸல்லலாஹு அலைஹிவஸல்லம்',
-    'அலை': 'அலைஹிவஸல்லம்',
-    'ரலி': 'ரலியல்லாஹு அன்ஹா',
+    // Abbreviations → full honorifics
+    'ஸல்': 'ஸல்லலாஹு அலைஹி வஸல்லம்',
+    'அலை': 'அலைஹிஸ்ஸலாம்',
+    'ரலி': 'ரலியல்லாஹு அன்ஹு',
   };
 
-  /// Expand abbreviated honorifics so the model speaks the full phrase.
-  /// Only expands when the abbreviation appears as a standalone word
-  /// (surrounded by whitespace / punctuation / parentheses).
-  String _expandHonorifics(String text) {
+  // ── Fix #1: Arabic-origin pronunciation smoothing ──
+  // Makes the VITS Tamil model pronounce Arabic names more naturally.
+  static const Map<String, String> _pronunciationFixes = {
+    'அல்லாஹ்': 'அல்லாஹு',
+    'ரஸூல்': 'ரசூல்',
+    'ஹதீஸ்': 'ஹதீது',
+    'இப்னு': 'இப்னு',
+    'அப்துல்லாஹ்': 'அப்துல்லாஹி',
+    'உமர்': 'உமரு',
+    'உஸ்மான்': 'உதுமான்',
+    'ஸஹீஹ்': 'ஸஹீஹு',
+    'ஃபி': 'ஃபி',
+  };
+
+  // ── Fix #4: Waqf (pause) insertion patterns ──
+  // Phrases after which a natural narration pause should occur.
+  static final List<RegExp> _waqfPatterns = [
+    RegExp(r'என்று நபி\s*ஸல்லலாஹு அலைஹி வஸல்லம்\s*அவர்கள்'),
+    RegExp(r'நபி\s*ஸல்லலாஹு அலைஹி வஸல்லம்\s*கூறினார்'),
+    RegExp(r'அல்லாஹுவின் தூதர்.*?கூறினார்'),
+    RegExp(r'என்று அறிவித்தார்'),
+    RegExp(r'என அறிவித்தார்'),
+    RegExp(r'என்று கூறினார்'),
+  ];
+
+  /// Waqf pause duration in milliseconds (Islamic narration style).
+  static const int _waqfPauseMs = 400;
+
+  /// Full text normalization pipeline for Islamic Tamil text.
+  /// Order: strip parens → expand abbreviations → fix pronunciation.
+  String _normalizeText(String text) {
     String result = text;
+
+    // Step 1: Strip parenthesized abbreviations → bare abbreviation
+    // e.g., "நபி(ஸல்)" → "நபி ஸல்"
+    result = result.replaceAllMapped(_parenAbbrevPattern, (m) {
+      return ' ${m.group(1)!} ';
+    });
+
+    // Step 2: Expand standalone abbreviations → full honorific
     for (final entry in _honorificExpansions.entries) {
-      // Word-boundary: preceded/followed by space, punctuation, parens, or start/end
       final pattern = RegExp(
-        r'(?<=[\s\(\)\[\].,;:!?\u0964]|^)' +
+        r'(?<=[\s,;:.!?\u0964]|^)' +
         RegExp.escape(entry.key) +
-        r'(?=[\s\(\)\[\].,;:!?\u0964]|$)',
+        r'(?=[\s,;:.!?\u0964]|$)',
       );
       result = result.replaceAll(pattern, entry.value);
     }
+
+    // Step 3: Fix Arabic-origin word pronunciation
+    for (final entry in _pronunciationFixes.entries) {
+      result = result.replaceAll(entry.key, entry.value);
+    }
+
+    // Step 4: Collapse multiple spaces
+    result = result.replaceAll(RegExp(r'\s{2,}'), ' ').trim();
+
     return result;
   }
 
@@ -142,8 +192,8 @@ class TtsEngine {
       throw StateError('TTS engine not initialized');
     }
 
-    // Expand honorific abbreviations before tokenization
-    final normalizedText = _expandHonorifics(text);
+    // Full Islamic text normalization before tokenization
+    final normalizedText = _normalizeText(text);
 
     // Tokenize the text (add_blank is handled by tokenizer)
     final tokenIds = _tokenizer.tokenize(normalizedText);
@@ -185,7 +235,7 @@ class TtsEngine {
 
     _cancelled = false;
 
-    final normalizedText = _expandHonorifics(text);
+    final normalizedText = _normalizeText(text);
     final tokenIds = _tokenizer.tokenize(normalizedText);
     if (tokenIds.isEmpty) return;
 
@@ -250,12 +300,37 @@ class TtsEngine {
 
       // Emit audio *without* the tail region (it will be blended into the next chunk)
       // For the last chunk, emit everything.
+      Float32List emitAudio;
       if (i < sentences.length - 1 && trimmed.length > tailLen) {
-        yield Float32List.sublistView(trimmed, 0, trimmed.length - tailLen);
+        emitAudio = Float32List.sublistView(trimmed, 0, trimmed.length - tailLen);
       } else {
-        yield trimmed;
+        emitAudio = trimmed;
       }
+
+      // Fix #4: Insert waqf pause if the chunk ends with a narration marker
+      if (_shouldInsertWaqf(chunk)) {
+        emitAudio = _appendSilence(emitAudio, _waqfPauseMs);
+      }
+
+      yield emitAudio;
     }
+  }
+
+  /// Check if a chunk of text ends with a phrase that deserves a waqf pause.
+  bool _shouldInsertWaqf(String text) {
+    for (final pattern in _waqfPatterns) {
+      if (pattern.hasMatch(text)) return true;
+    }
+    return false;
+  }
+
+  /// Append [ms] milliseconds of silence to the end of [audio].
+  Float32List _appendSilence(Float32List audio, int ms) {
+    final silenceSamples = (VitsConfig.sampleRate * ms / 1000).toInt();
+    final result = Float32List(audio.length + silenceSamples);
+    result.setRange(0, audio.length, audio);
+    // Remaining samples are already 0.0 (silence)
+    return result;
   }
 
   /// Split [text] into sentence-level chunks, synthesize each one separately
