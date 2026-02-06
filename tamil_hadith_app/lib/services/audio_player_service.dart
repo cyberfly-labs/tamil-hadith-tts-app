@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -10,6 +11,8 @@ import 'package:path/path.dart' as p;
 class AudioPlayerService {
   final AudioPlayer _player = AudioPlayer();
   String? _tempDir;
+  ConcatenatingAudioSource? _playlist;
+  int _chunkIndex = 0;
 
   AudioPlayer get player => _player;
 
@@ -34,6 +37,53 @@ class AudioPlayerService {
     // Play the WAV file
     await _player.setFilePath(wavFile.path);
     await _player.play();
+  }
+
+  /// Start streaming playback. Call this once before [addStreamingChunk].
+  /// Playback begins as soon as the first chunk is added.
+  Future<void> startStreaming() async {
+    _tempDir ??= (await getApplicationCacheDirectory()).path;
+    _chunkIndex = 0;
+
+    // Clean up previous chunk files
+    final dir = Directory(_tempDir!);
+    await for (final f in dir.list()) {
+      if (f is File && p.basename(f.path).startsWith('tts_chunk_')) {
+        await f.delete();
+      }
+    }
+
+    _playlist = ConcatenatingAudioSource(children: []);
+    await _player.setAudioSource(_playlist!, preload: false);
+  }
+
+  /// Add a new PCM chunk to the streaming playlist and start playing
+  /// if not already playing.
+  Future<void> addStreamingChunk(Float32List pcmData, {int sampleRate = 16000}) async {
+    if (pcmData.isEmpty || _playlist == null) return;
+
+    _tempDir ??= (await getApplicationCacheDirectory()).path;
+
+    final wavBytes = _pcmToWav(pcmData, sampleRate);
+    final wavFile = File(p.join(_tempDir!, 'tts_chunk_${_chunkIndex++}.wav'));
+    await wavFile.writeAsBytes(wavBytes);
+
+    await _playlist!.add(AudioSource.file(wavFile.path));
+
+    // Start playback on the first chunk
+    if (!_player.playing) {
+      await _player.play();
+    }
+  }
+
+  /// Wait for the current streaming playlist to finish playing.
+  /// Returns a future that completes when playback reaches the end.
+  Future<void> awaitStreamingComplete() async {
+    if (_playlist == null) return;
+    // Listen for the player completing (reaching the end of the queue)
+    await _player.processingStateStream.firstWhere(
+      (state) => state == ProcessingState.completed,
+    );
   }
 
   /// Stop current playback

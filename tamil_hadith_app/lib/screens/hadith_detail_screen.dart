@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:just_audio/just_audio.dart';
 
 import '../models/hadith.dart';
 import '../services/tts_engine.dart';
@@ -199,42 +200,79 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
       return;
     }
 
+    // If paused (player has source), resume
+    if (_audioPlayer.player.processingState != ProcessingState.idle &&
+        _audioPlayer.player.processingState != ProcessingState.completed) {
+      await _audioPlayer.resume();
+      return;
+    }
+
     setState(() {
       _isSynthesizing = true;
       _statusText = 'உரையை ஒலியாக மாற்றுகிறது...';
     });
 
     try {
-      // Synthesize the hadith text
       final text = widget.hadith.textTamil;
-      final audio = await _ttsEngine.synthesize(text);
 
-      if (audio != null && audio.isNotEmpty) {
-        setState(() {
-          _statusText = 'ஒலிக்கிறது...';
-          _isSynthesizing = false;
-        });
-        await _audioPlayer.playPcmAudio(audio);
-      } else {
+      // Start the streaming playlist
+      await _audioPlayer.startStreaming();
+
+      bool firstChunk = true;
+      int chunkCount = 0;
+
+      await for (final chunkAudio in _ttsEngine.synthesizeStreaming(text)) {
+        if (!mounted) {
+          _ttsEngine.cancelSynthesis();
+          break;
+        }
+
+        chunkCount++;
+        await _audioPlayer.addStreamingChunk(chunkAudio);
+
+        if (firstChunk) {
+          firstChunk = false;
+          if (mounted) {
+            setState(() {
+              _isSynthesizing = false;
+              _statusText = 'ஒலிக்கிறது...';
+            });
+          }
+        } else if (mounted) {
+          setState(() {
+            _statusText = 'ஒலிக்கிறது... (பகுதி $chunkCount)';
+          });
+        }
+      }
+
+      if (mounted && chunkCount == 0) {
         setState(() {
           _statusText = 'ஒலிப்பதிவு தோல்வி';
           _isSynthesizing = false;
         });
+      } else if (mounted) {
+        setState(() => _statusText = 'ஒலிக்கிறது...');
       }
     } catch (e) {
       debugPrint('TTS Error: $e');
-      setState(() {
-        _statusText = 'பிழை: $e';
-        _isSynthesizing = false;
-      });
+      if (mounted) {
+        setState(() {
+          _statusText = 'பிழை: $e';
+          _isSynthesizing = false;
+        });
+      }
     }
   }
 
   Future<void> _onStop() async {
+    _ttsEngine.cancelSynthesis();
     await _audioPlayer.stop();
-    setState(() {
-      _statusText = '';
-    });
+    if (mounted) {
+      setState(() {
+        _statusText = '';
+        _isSynthesizing = false;
+      });
+    }
   }
 }
 

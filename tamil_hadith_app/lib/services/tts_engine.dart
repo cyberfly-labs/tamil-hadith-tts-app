@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ffi';
 import 'dart:io';
 import 'dart:math';
@@ -43,6 +44,14 @@ class TtsEngine {
   bool get isInitialized => _isInitialized;
   bool get isNativeAvailable => _enginePtr != null && _enginePtr != nullptr;
   TamilTokenizer get tokenizer => _tokenizer;
+
+  /// Set to true to abort an in-progress streaming synthesis.
+  bool _cancelled = false;
+
+  /// Cancel any in-progress streaming synthesis.
+  void cancelSynthesis() {
+    _cancelled = true;
+  }
 
   /// Initialize the TTS engine
   /// Copies the model from assets to a writable directory and loads it
@@ -157,6 +166,96 @@ class TtsEngine {
 
     // Software fallback: generate placeholder audio
     return _generatePlaceholderAudio(tokenIds.length);
+  }
+
+  /// Stream-synthesize Tamil text, yielding each chunk's audio as soon as it's
+  /// ready. The caller can start playback on the first chunk while the rest
+  /// are still being synthesized.
+  ///
+  /// Each emitted [Float32List] is a trimmed PCM chunk (silence-stripped).
+  /// The last event is always emitted before the stream closes.
+  Stream<Float32List> synthesizeStreaming(String text, {
+    double noiseScale = VitsConfig.noiseScale,
+    double lengthScale = VitsConfig.lengthScale,
+    double noiseScaleW = VitsConfig.noiseScaleW,
+  }) async* {
+    if (!_isInitialized) {
+      throw StateError('TTS engine not initialized');
+    }
+
+    _cancelled = false;
+
+    final normalizedText = _expandHonorifics(text);
+    final tokenIds = _tokenizer.tokenize(normalizedText);
+    if (tokenIds.isEmpty) return;
+
+    debugPrint('TTS stream: ${normalizedText.length} chars -> ${tokenIds.length} tokens');
+
+    if (!isNativeAvailable || _bindings == null) {
+      yield _generatePlaceholderAudio(tokenIds.length);
+      return;
+    }
+
+    // Short text — single chunk
+    if (tokenIds.length <= _maxTokensPerChunk) {
+      final audio = _synthesizeNative(tokenIds, noiseScale, lengthScale, noiseScaleW);
+      if (audio != null && audio.isNotEmpty) yield audio;
+      return;
+    }
+
+    // Long text — stream chunk-by-chunk
+    final sentences = _splitIntoSentences(normalizedText);
+    debugPrint('TTS stream: ${sentences.length} chunks');
+
+    Float32List? prevTail; // last _crossfadeSamples of previous chunk for blending
+
+    for (int i = 0; i < sentences.length; i++) {
+      if (_cancelled) {
+        debugPrint('TTS stream: cancelled at chunk ${i + 1}');
+        break;
+      }
+
+      final chunk = sentences[i];
+      if (chunk.trim().isEmpty) continue;
+      final chunkTokens = _tokenizer.tokenize(chunk);
+      if (chunkTokens.isEmpty) continue;
+
+      debugPrint('TTS stream: chunk ${i + 1}/${sentences.length} '
+          '(${chunkTokens.length} tokens)');
+
+      // Yield to event loop before heavy FFI work
+      await Future<void>.delayed(Duration.zero);
+      if (_cancelled) break;
+
+      final raw = _synthesizeNative(chunkTokens, noiseScale, lengthScale, noiseScaleW);
+      if (raw == null || raw.isEmpty) continue;
+
+      final trimmed = _trimSilence(raw);
+      if (trimmed.isEmpty) continue;
+
+      if (prevTail != null) {
+        // Crossfade: blend previous chunk's tail with this chunk's head
+        final overlap = min(_crossfadeSamples, min(prevTail.length, trimmed.length));
+        for (int s = 0; s < overlap; s++) {
+          final t = s / overlap;
+          trimmed[s] = prevTail[s] * (1.0 - t) + trimmed[s] * t;
+        }
+      }
+
+      // Save the tail for crossfading with the next chunk
+      final tailLen = min(_crossfadeSamples, trimmed.length);
+      prevTail = Float32List.sublistView(
+        trimmed, trimmed.length - tailLen, trimmed.length,
+      );
+
+      // Emit audio *without* the tail region (it will be blended into the next chunk)
+      // For the last chunk, emit everything.
+      if (i < sentences.length - 1 && trimmed.length > tailLen) {
+        yield Float32List.sublistView(trimmed, 0, trimmed.length - tailLen);
+      } else {
+        yield trimmed;
+      }
+    }
   }
 
   /// Split [text] into sentence-level chunks, synthesize each one separately
