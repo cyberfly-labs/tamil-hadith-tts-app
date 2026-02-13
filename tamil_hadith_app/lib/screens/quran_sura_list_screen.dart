@@ -64,7 +64,7 @@ class _QuranSuraListScreenState extends State<QuranSuraListScreen> {
                   backgroundColor: const Color(0xFF1B4D3E),
                   foregroundColor: const Color(0xFFFAF8F3),
                   centerTitle: true,
-                  title: const Text('திருக்குர்ஆன்'),
+                  //title: const Text('திருக்குர்ஆன்'),
                   flexibleSpace: FlexibleSpaceBar(
                     background: Container(
                       decoration: const BoxDecoration(
@@ -92,7 +92,6 @@ class _QuranSuraListScreenState extends State<QuranSuraListScreen> {
                   backgroundColor: const Color(0xFF1B4D3E),
                   foregroundColor: const Color(0xFFFAF8F3),
                   centerTitle: true,
-                  title: const Text('திருக்குர்ஆன்'),
                   actions: [
                     IconButton(
                       icon: const Icon(Icons.bookmark_rounded),
@@ -324,7 +323,10 @@ class _QuranSuraListScreenState extends State<QuranSuraListScreen> {
             ),
       floatingActionButton: _isLoading
           ? null
-          : ScrollToTopFab(scrollController: _scrollController),
+          : ScrollToTopFab(
+              scrollController: _scrollController,
+              heroTag: 'quran_scroll_top',
+            ),
     );
   }
 

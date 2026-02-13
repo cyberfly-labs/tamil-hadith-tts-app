@@ -5,11 +5,13 @@ import 'package:flutter/material.dart';
 class ScrollToTopFab extends StatefulWidget {
   final ScrollController scrollController;
   final double showOffset;
+  final Object? heroTag;
 
   const ScrollToTopFab({
     super.key,
     required this.scrollController,
     this.showOffset = 400,
+    this.heroTag,
   });
 
   @override
@@ -49,6 +51,7 @@ class _ScrollToTopFabState extends State<ScrollToTopFab> {
         opacity: _show ? 1.0 : 0.0,
         duration: const Duration(milliseconds: 200),
         child: FloatingActionButton.small(
+          heroTag: widget.heroTag,
           onPressed: () {
             widget.scrollController.animateTo(
               0,

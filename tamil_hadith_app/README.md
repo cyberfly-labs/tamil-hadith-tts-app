@@ -1,6 +1,6 @@
 # இஸ்லாமிய நூல்கள் — Tamil Islamic Library
 
-A Flutter app for reading and listening to Islamic scriptures in Tamil, featuring offline AI-powered text-to-speech.
+A Flutter app for reading and listening to the **Quran** and **Hadith** in Tamil with offline AI-powered text-to-speech.
 
 ## Features
 
@@ -9,6 +9,7 @@ A Flutter app for reading and listening to Islamic scriptures in Tamil, featurin
 - Sura-by-sura browsing with verse list navigation
 - **Whole-sura playback** — plays all verses sequentially with lookahead prefetch
 - Full-text search across all verses
+- Translation source: [alqurandb.com](https://alqurandb.com/api/translations/download/tamil_ift/sqlite) (IFT)
 
 ### 📚 Hadith (ஹதீஸ்)
 - **Sahih al-Bukhari** — 7,393 hadiths across 97 books
@@ -19,11 +20,11 @@ A Flutter app for reading and listening to Islamic scriptures in Tamil, featurin
 
 ### 🔊 AI Text-to-Speech
 - On-device Tamil TTS using **MNN** (Mobile Neural Network) inference engine
-- Based on **facebook/mms-tts-tam** VITS model, INT8 quantized for mobile
+- Based on **facebook/mms-tts-tam** VITS model, INT8 quantised for mobile
 - C++ native code via FFI for maximum performance
 - Streaming synthesis — audio starts playing before full generation completes
 - Background isolate processing to keep UI smooth
-- Adjustable playback speed (0.75x – 1.5x)
+- Adjustable TTS speed (0.7×–1.6×) and pitch (0.5×–1.5×)
 
 ### 💾 Offline-First
 - All text content stored in local **SQLite** databases (hadith.db, tamil_ift.db)
@@ -31,15 +32,22 @@ A Flutter app for reading and listening to Islamic scriptures in Tamil, featurin
 - TTS model downloaded once via onboarding, runs entirely on-device
 - No internet required after initial setup
 
+### ⚙️ Settings
+- **Dark mode** toggle (System / Light / Dark)
+- **TTS speed & pitch** sliders with live preview
+- **Language** selector (Tamil / English)
+- AI model management (download / delete / switch INT8 ↔ FP16+INT8)
+- Audio cache management with clear option
+
 ### 🔖 Bookmarks
-- Save favourite hadiths for quick access
+- Save favourite hadiths and verses for quick access
 - Cross-collection bookmarking (Bukhari & Muslim)
 
 ### 🎨 Design
 - Islamic-themed UI with emerald and gold palette
 - Material 3 with warm borders and elegant typography
 - Responsive font sizing controls on detail screens
-- Light/dark theme support
+- Full light & dark theme support with animated transitions
 
 ## Architecture
 
@@ -58,7 +66,7 @@ lib/
 │   ├── quran_sura_list_screen.dart
 │   ├── quran_verse_list_screen.dart
 │   ├── quran_verse_detail_screen.dart
-│   ├── settings_screen.dart       # Model management & cache
+│   ├── settings_screen.dart       # Theme, TTS, model, cache, language
 │   └── onboarding_screen.dart     # First-launch model download
 ├── services/
 │   ├── tts_engine.dart            # Dart ↔ C++ FFI bridge
@@ -70,6 +78,7 @@ lib/
 │   ├── quran_database.dart
 │   ├── bookmark_service.dart
 │   ├── model_download_service.dart
+│   ├── settings_service.dart      # Theme, TTS speed/pitch, locale prefs
 │   ├── precache_service.dart      # Lookahead audio prefetching
 │   └── tokenizer.dart             # Tamil text tokenizer for TTS
 native/
@@ -101,7 +110,15 @@ flutter pub get
 flutter run
 ```
 
-On first launch, the app will prompt to download the TTS model (~50 MB). After that, everything works offline.
+On first launch, the app will prompt to download the TTS model (~28–55 MB). After that, everything works offline.
+
+## Data Sources
+
+| Data | Source |
+|------|--------|
+| Quran Tamil Translation | [alqurandb.com — IFT](https://alqurandb.com/api/translations/download/tamil_ift/sqlite) |
+| Hadith Collections | Sahih al-Bukhari & Sahih Muslim (Tamil) |
+| TTS Model | [facebook/mms-tts-tam](https://huggingface.co/facebook/mms-tts-tam) via MNN |
 
 ## License
 

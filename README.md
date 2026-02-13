@@ -1,6 +1,6 @@
-# Tamil Hadith Audio (புகாரி ஹதீஸ்)
+# இஸ்லாமிய நூல்கள் — Tamil Islamic Library
 
-A Flutter app for reading and listening to Sahih al-Bukhari hadiths in Tamil. Text-to-speech is powered by the **facebook/mms-tts-tam** VITS model running on-device via [MNN](https://github.com/alibaba/MNN).
+A Flutter app for reading and listening to the **Quran** and **Hadith** in Tamil with offline AI-powered text-to-speech. TTS is driven by the **facebook/mms-tts-tam** VITS model running on-device via [MNN](https://github.com/alibaba/MNN).
 
 ## Project Structure
 
@@ -9,20 +9,22 @@ tamil-hadith-audio/
 ├── build_db.py              # Build SQLite database from cleaned text
 ├── clean.py                 # Text cleaning scripts
 ├── extract_hadith.py        # Extract hadiths from raw PDF text
-├── model_fp16_int8.mnn      # Quantised VITS model (fp16 weights, int8 activations)
-├── tokens.txt               # Tokenizer vocabulary
 ├── tamil_hadith_app/        # Flutter application
 │   ├── assets/
-│   │   ├── db/bukhari.db    # Pre-built hadith database
-│   │   └── models/          # MNN model + vocab bundled as assets
+│   │   ├── db/
+│   │   │   ├── hadith.db        # Bukhari + Muslim hadiths
+│   │   │   └── tamil_ift.db     # Quran Tamil translation (IFT)
+│   │   └── models/
+│   │       └── tokens.txt       # TTS tokenizer vocabulary
 │   ├── native/              # C++ MNN TTS wrapper (FFI)
 │   │   ├── CMakeLists.txt
 │   │   └── src/mnn_tts.cpp
 │   ├── lib/
 │   │   ├── main.dart
-│   │   ├── models/          # Data models
-│   │   ├── screens/         # UI screens
-│   │   ├── services/        # TTS engine, tokenizer, DB, audio player
+│   │   ├── theme.dart       # Islamic colour palette & Material 3 (light + dark)
+│   │   ├── models/          # Data models (Hadith, QuranVerse)
+│   │   ├── screens/         # UI screens (9 screens)
+│   │   ├── services/        # TTS engine, tokenizer, DB, audio, settings
 │   │   └── widgets/
 │   └── 3rd_party/MNN/       # MNN source (built from source for Android)
 └── utils/
@@ -97,15 +99,57 @@ flutter devices
 flutter run -d <device-id>
 ```
 
+## Features
+
+### 📖 Quran (குர்ஆன்)
+- Complete Tamil translation of all **114 suras** & **6,236 verses**
+- Sura-by-sura browsing with verse list navigation
+- Whole-sura playback — plays all verses sequentially with lookahead prefetch
+- Full-text search across all verses
+- Translation source: [alqurandb.com](https://alqurandb.com/api/translations/download/tamil_ift/sqlite) (IFT)
+
+### 📚 Hadith (ஹதீஸ்)
+- **Sahih al-Bukhari** — 7,393 hadiths across 97 books
+- **Sahih Muslim** — 5,770 hadiths across 56 books
+- Book-based browsing with paginated hadith lists
+- Chapter headings, narrator info, and hadith text in Tamil
+- Full-text search across both collections
+
+### 🔊 AI Text-to-Speech
+- On-device Tamil TTS using **MNN** (Mobile Neural Network) inference
+- Based on **facebook/mms-tts-tam** VITS model, INT8 quantised for mobile
+- C++ native code via FFI for maximum performance
+- Streaming synthesis — audio starts playing before full generation completes
+- Background isolate processing to keep UI smooth
+- Adjustable TTS speed (0.7×–1.6×) and pitch (0.5×–1.5×)
+
+### 💾 Offline-First
+- All text content stored in local **SQLite** databases
+- Audio cache with LRU eviction (1 GB max) — listen once, play instantly again
+- TTS model downloaded once via onboarding, runs entirely on-device
+- No internet required after initial setup
+
+### ⚙️ Settings
+- **Dark mode** toggle (System / Light / Dark)
+- **TTS speed & pitch** sliders
+- **Language** selector (Tamil / English)
+- Model management (download / delete / switch INT8 ↔ FP16)
+- Audio cache management
+
+### 🔖 Bookmarks
+- Save favourite hadiths and verses for quick access
+- Cross-collection bookmarking
+
 ## How It Works
 
-1. **Database** — Sahih al-Bukhari hadiths in Tamil are stored in a SQLite database (`bukhari.db`), loaded at startup.
-2. **UI** — Browse by book (பாகம்), view hadith list, read full hadith text, and search.
+1. **Database** — Hadith and Quran Tamil translations are stored in two SQLite databases (`hadith.db`, `tamil_ift.db`), loaded at startup.
+2. **UI** — Browse Quran by sura or Hadith by book, view details, read text, and search.
 3. **TTS** — When the user taps play, the Tamil text is:
    - **Tokenized** character-by-character using the MMS-TTS-TAM vocabulary
    - **Chunked** into sentence-sized pieces (≤ 800 tokens each) to avoid blocking the UI
    - **Synthesized** on-device by the VITS model running through MNN (C++ via FFI)
    - **Played back** as 16 kHz mono PCM audio
+4. **Settings** — Theme, voice speed/pitch, and language preferences are persisted via `SharedPreferences` and applied reactively.
 
 ## Native Build (MNN)
 
@@ -117,11 +161,19 @@ The native TTS wrapper is built automatically by the Flutter/Gradle CMake integr
 
 No manual native build step is needed — `flutter run` handles everything.
 
+## Data Sources
+
+| Data | Source |
+|------|--------|
+| Quran Tamil Translation | [alqurandb.com — IFT](https://alqurandb.com/api/translations/download/tamil_ift/sqlite) |
+| Hadith Collections | Sahih al-Bukhari & Sahih Muslim (Tamil) |
+| TTS Model | [facebook/mms-tts-tam](https://huggingface.co/facebook/mms-tts-tam) via MNN |
+
 ## Troubleshooting
 
 | Issue | Fix |
 |-------|-----|
 | CMake not found | Install CMake ≥ 3.22.1 via Android Studio SDK Manager |
 | NDK not found | Set `ANDROID_NDK_HOME` or install NDK via SDK Manager |
-| Model asset missing | Run `cp model_fp16_int8.mnn tamil_hadith_app/assets/models/` |
-| ANR on long hadiths | Already handled — text is chunked before synthesis |
+| Model download fails | Check internet connection; retry from Settings |
+| ANR on long text | Already handled — text is chunked before synthesis |

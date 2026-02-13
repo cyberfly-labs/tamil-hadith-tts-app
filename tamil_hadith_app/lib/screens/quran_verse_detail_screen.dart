@@ -55,7 +55,10 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
 
   static const List<double> _speedOptions = [0.75, 1.0, 1.25, 1.5];
 
-  final ScrollController _scrollController = ScrollController();
+  // Estimated height per verse card (card ~80px content + 12px padding + 12px gap)
+  static const double _estimatedVerseHeight = 120.0;
+
+  late final ScrollController _scrollController;
   late final List<GlobalKey> _verseKeys;
 
   QuranVerse get _currentVerse => widget.verses[_currentVerseIndex];
@@ -67,12 +70,27 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
     super.initState();
     _verseKeys = List.generate(widget.verses.length, (_) => GlobalKey());
     _currentVerseIndex = widget.startIndex;
+
+    // Set initialScrollOffset so SliverList builds items around the target
+    // verse from the very first frame (avoids lazy-build miss).
+    _scrollController = ScrollController(
+      initialScrollOffset: widget.startIndex > 0
+          ? widget.startIndex * _estimatedVerseHeight
+          : 0,
+    );
+
     _initServices();
     _playingSub = _audioPlayer.playingStream.listen((playing) {
       if (mounted) {
         setState(() => _isPlaying = playing);
       }
     });
+    // Fine-tune scroll position after the widget tree is built
+    if (widget.startIndex > 0) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _scrollToVerse(widget.startIndex);
+      });
+    }
   }
 
   Future<void> _initServices() async {
@@ -810,6 +828,7 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
         _statusText = '';
         _isSynthesizing = false;
         _isSuraPlaying = false;
+        _currentVerseIndex = widget.startIndex; // reset so next play starts from beginning
       });
     }
   }

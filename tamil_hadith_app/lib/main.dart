@@ -6,6 +6,7 @@ import 'services/hadith_database.dart';
 import 'services/quran_database.dart';
 import 'services/model_download_service.dart';
 import 'services/bookmark_service.dart';
+import 'services/settings_service.dart';
 import 'screens/home_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'theme.dart';
@@ -23,13 +24,14 @@ void main() async {
   final session = await AudioSession.instance;
   await session.configure(const AudioSessionConfiguration.speech());
 
+  // Initialize settings service (theme, TTS prefs, locale)
+  final settings = SettingsService();
+  await settings.initialize();
+
   // Initialize databases
   final hadithDatabase = HadithDatabase();
   final quranDatabase = QuranDatabase();
-  await Future.wait([
-    hadithDatabase.initialize(),
-    quranDatabase.initialize(),
-  ]);
+  await Future.wait([hadithDatabase.initialize(), quranDatabase.initialize()]);
 
   // Initialize bookmark service
   final bookmarkService = BookmarkService();
@@ -41,14 +43,16 @@ void main() async {
   await modelService.initialize();
   final modelReady = await modelService.isModelDownloaded;
 
-  runApp(TamilHadithApp(
-    hadithDatabase: hadithDatabase,
-    quranDatabase: quranDatabase,
-    modelReady: modelReady,
-  ));
+  runApp(
+    TamilHadithApp(
+      hadithDatabase: hadithDatabase,
+      quranDatabase: quranDatabase,
+      modelReady: modelReady,
+    ),
+  );
 }
 
-class TamilHadithApp extends StatelessWidget {
+class TamilHadithApp extends StatefulWidget {
   final HadithDatabase hadithDatabase;
   final QuranDatabase quranDatabase;
   final bool modelReady;
@@ -61,21 +65,42 @@ class TamilHadithApp extends StatelessWidget {
   });
 
   @override
+  State<TamilHadithApp> createState() => _TamilHadithAppState();
+}
+
+class _TamilHadithAppState extends State<TamilHadithApp> {
+  final SettingsService _settings = SettingsService();
+
+  @override
+  void initState() {
+    super.initState();
+    _settings.addListener(_onSettingsChanged);
+  }
+
+  @override
+  void dispose() {
+    _settings.removeListener(_onSettingsChanged);
+    super.dispose();
+  }
+
+  void _onSettingsChanged() => setState(() {});
+
+  @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'இஸ்லாமிய நூல்கள்',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.theme,
       darkTheme: AppTheme.darkTheme,
-      themeMode: ThemeMode.system,
-      home: modelReady
+      themeMode: _settings.themeMode,
+      home: widget.modelReady
           ? HomeScreen(
-              hadithDatabase: hadithDatabase,
-              quranDatabase: quranDatabase,
+              hadithDatabase: widget.hadithDatabase,
+              quranDatabase: widget.quranDatabase,
             )
           : _OnboardingWrapper(
-              hadithDatabase: hadithDatabase,
-              quranDatabase: quranDatabase,
+              hadithDatabase: widget.hadithDatabase,
+              quranDatabase: widget.quranDatabase,
             ),
     );
   }

@@ -166,7 +166,6 @@ class _HadithHomeBodyState extends State<_HadithHomeBody>
               pinned: true,
               backgroundColor: const Color(0xFF1B4D3E),
               foregroundColor: const Color(0xFFFAF8F3),
-              title: const Text('ஹதீஸ்'),
               flexibleSpace: FlexibleSpaceBar(
                 background: Container(
                   decoration: const BoxDecoration(
@@ -200,7 +199,6 @@ class _HadithHomeBodyState extends State<_HadithHomeBody>
             stretch: true,
             backgroundColor: const Color(0xFF1B4D3E),
             foregroundColor: const Color(0xFFFAF8F3),
-            title: Text(_selectedCollection.shortName),
             actions: [
               IconButton(
                 icon: const Icon(Icons.bookmark_rounded),
@@ -462,7 +460,10 @@ class _HadithHomeBodyState extends State<_HadithHomeBody>
           ),
         ],
       ),
-      floatingActionButton: ScrollToTopFab(scrollController: _scrollController),
+      floatingActionButton: ScrollToTopFab(
+        scrollController: _scrollController,
+        heroTag: 'hadith_scroll_top',
+      ),
     );
   }
 

@@ -93,7 +93,7 @@ class TtsError {
 class TtsIsolateRunner {
   Isolate? _isolate;
   SendPort? _sendPort;
-  final _readyCompleter = Completer<bool>();
+  Completer<bool> _readyCompleter = Completer<bool>();
   int _nextRequestId = 0;
   StreamController<Float32List>? _currentStream;
   int _currentRequestId = -1;
@@ -184,18 +184,18 @@ class TtsIsolateRunner {
     _currentStream = null;
   }
 
-  /// Shut down the isolate.
+  /// Shut down the isolate synchronously.
   /// Sends a dispose message so the worker can destroy the native engine
   /// and free FFI pointers before the isolate is killed.
   void dispose() {
     cancel();
     _sendPort?.send(const _DisposeRequest());
-    // Give the worker a brief moment to clean up, then kill.
-    Future.delayed(const Duration(milliseconds: 50), () {
-      _isolate?.kill(priority: Isolate.immediate);
-      _isolate = null;
-      _sendPort = null;
-    });
+    _isolate?.kill(priority: Isolate.immediate);
+    _isolate = null;
+    _sendPort = null;
+    _nativeAvailable = false;
+    // Reset the ready completer so start() can be called again.
+    _readyCompleter = Completer<bool>();
   }
 }
 
@@ -861,11 +861,32 @@ class _TtsWorker {
     // Step 1: split on sentence-ending punctuation and colons
     //   Colon is a primary split because hadith text uses "X கூறினார்:" pattern
     final raw = text.split(RegExp(r'(?<=[.!?।:\n])\s*'));
-    final List<String> result = [];
+    final List<String> merged = [];
 
+    // Merge short single-word fragments (e.g. "கவனியுங்கள்!") with
+    // the previous chunk so they don't become standalone tiny sentences
+    // that stall the audio pipeline.
     for (final sentence in raw) {
       if (sentence.trim().isEmpty) continue;
-      // Skip punctuation-only fragments from comma insertion
+      if (RegExp(r'^[\s,;:.!?।]+$').hasMatch(sentence.trim())) continue;
+
+      // Count real words (excluding punctuation-only tokens)
+      final wordCount = sentence.trim().split(RegExp(r'\s+')).where(
+        (w) => !RegExp(r'^[,;:.!?।]+$').hasMatch(w),
+      ).length;
+
+      // If this is a short fragment (≤2 words), attach it to the previous chunk
+      if (wordCount <= 2 && merged.isNotEmpty) {
+        merged.last = '${merged.last} $sentence';
+        continue;
+      }
+
+      merged.add(sentence);
+    }
+
+    final List<String> result = [];
+    for (final sentence in merged) {
+      if (sentence.trim().isEmpty) continue;
       if (RegExp(r'^[\s,;:.!?।]+$').hasMatch(sentence.trim())) continue;
       final tokens = _tokenizer.tokenize(sentence);
       if (tokens.length <= _maxTokensPerChunk) {
