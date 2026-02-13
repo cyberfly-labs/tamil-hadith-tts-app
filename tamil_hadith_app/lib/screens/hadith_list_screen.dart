@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../models/hadith.dart';
 import '../services/hadith_database.dart';
+import '../widgets/animated_press_card.dart';
+import '../widgets/shimmer_loading.dart';
+import '../widgets/scroll_to_top_fab.dart';
 import 'hadith_detail_screen.dart';
 
 /// Screen showing list of hadiths for a specific book in a collection
@@ -125,7 +128,7 @@ class _HadithListScreenState extends State<HadithListScreen> {
         ),
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const SingleChildScrollView(child: SkeletonList(itemCount: 6))
           : ListView.separated(
               controller: _scrollController,
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
@@ -136,14 +139,13 @@ class _HadithListScreenState extends State<HadithListScreen> {
                   return const Center(
                     child: Padding(
                       padding: EdgeInsets.all(16),
-                      child: CircularProgressIndicator(),
+                      child: CircularProgressIndicator(strokeWidth: 2.5),
                     ),
                   );
                 }
 
                 final hadith = _hadiths[index];
-                return _HadithCard(
-                  hadith: hadith,
+                return AnimatedPressCard(
                   onTap: () {
                     Navigator.push(
                       context,
@@ -152,9 +154,21 @@ class _HadithListScreenState extends State<HadithListScreen> {
                       ),
                     );
                   },
+                  child: _HadithCard(
+                    hadith: hadith,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => HadithDetailScreen(hadith: hadith),
+                        ),
+                      );
+                    },
+                  ),
                 );
               },
             ),
+      floatingActionButton: ScrollToTopFab(scrollController: _scrollController),
     );
   }
 }

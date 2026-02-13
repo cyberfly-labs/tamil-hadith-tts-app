@@ -26,12 +26,27 @@ class _InitRequest {
 class _SynthRequest {
   final int id;
   final String text;
-  _SynthRequest(this.id, this.text);
+  final double noiseScale;
+  final double lengthScale;
+  final double noiseScaleW;
+
+  _SynthRequest(
+    this.id,
+    this.text, {
+    required this.noiseScale,
+    required this.lengthScale,
+    required this.noiseScaleW,
+  });
 }
 
 /// Sent from main → worker to cancel the current job.
 class _CancelRequest {
   const _CancelRequest();
+}
+
+/// Sent from main → worker to destroy the native engine and free FFI memory.
+class _DisposeRequest {
+  const _DisposeRequest();
 }
 
 /// Sent from worker → main: one audio chunk.
@@ -135,7 +150,12 @@ class TtsIsolateRunner {
 
   /// Start streaming synthesis. Returns a stream of PCM Float32List chunks.
   /// Each chunk can be played immediately while the next is being synthesized.
-  Stream<Float32List> synthesizeStreaming(String text) {
+  Stream<Float32List> synthesizeStreaming(
+    String text, {
+    required double noiseScale,
+    required double lengthScale,
+    required double noiseScaleW,
+  }) {
     if (_sendPort == null) {
       return Stream.error(StateError('TTS isolate not started'));
     }
@@ -146,7 +166,13 @@ class TtsIsolateRunner {
     _currentRequestId = _nextRequestId++;
     _currentStream = StreamController<Float32List>();
 
-    _sendPort!.send(_SynthRequest(_currentRequestId, text));
+    _sendPort!.send(_SynthRequest(
+      _currentRequestId,
+      text,
+      noiseScale: noiseScale,
+      lengthScale: lengthScale,
+      noiseScaleW: noiseScaleW,
+    ));
 
     return _currentStream!.stream;
   }
@@ -159,11 +185,17 @@ class TtsIsolateRunner {
   }
 
   /// Shut down the isolate.
+  /// Sends a dispose message so the worker can destroy the native engine
+  /// and free FFI pointers before the isolate is killed.
   void dispose() {
     cancel();
-    _isolate?.kill(priority: Isolate.immediate);
-    _isolate = null;
-    _sendPort = null;
+    _sendPort?.send(const _DisposeRequest());
+    // Give the worker a brief moment to clean up, then kill.
+    Future.delayed(const Duration(milliseconds: 50), () {
+      _isolate?.kill(priority: Isolate.immediate);
+      _isolate = null;
+      _sendPort = null;
+    });
   }
 }
 
@@ -181,9 +213,17 @@ void _isolateEntry(SendPort mainSendPort) {
     if (message is _InitRequest) {
       worker.init(message.modelPath, message.tokensPath);
     } else if (message is _SynthRequest) {
-      worker.synthesize(message.id, message.text);
+      worker.synthesize(
+        message.id,
+        message.text,
+        noiseScale: message.noiseScale,
+        lengthScale: message.lengthScale,
+        noiseScaleW: message.noiseScaleW,
+      );
     } else if (message is _CancelRequest) {
       worker.cancelled = true;
+    } else if (message is _DisposeRequest) {
+      worker.destroyAndFree();
     }
   });
 }
@@ -198,6 +238,14 @@ class _TtsWorker {
   final TamilTokenizer _tokenizer = TamilTokenizer();
   bool _isInitialized = false;
   bool cancelled = false;
+
+  // Pre-allocated FFI pointers — avoids calloc/free per chunk.
+  // Output pointer + length are always 1 element, allocated once at init.
+  Pointer<Pointer<Float>>? _outputDataPtr;
+  Pointer<IntPtr>? _outputLenPtr;
+  // Reusable input token buffer — grows as needed, never shrinks.
+  Pointer<Int64>? _inputPtr;
+  int _inputPtrLen = 0;
 
   bool get _isNativeAvailable => _enginePtr != null && _enginePtr != nullptr;
 
@@ -236,9 +284,6 @@ class _TtsWorker {
     'அஹ்மது':      'அஹ்மத்',
     // ── Common Arabic terms ──
     'ரஸூல்':       'ரசூல்',
-    'ஹதீஸ்':       'ஹதீஸ்',
-    'அப்துல்லாஹ்':  'அப்துல்லாஹ்',
-    'ஸஹீஹ்':       'ஸஹீஹ்',
     'ஸஹீஹ':        'ஸஹீஹ்',
     // ── Long vowel enforcement ──
     'அல்லா ':      'அல்லாஹ் ',    // incomplete → proper ending
@@ -247,7 +292,6 @@ class _TtsWorker {
     // ── Common mispronounced names ──
     'இப்ராஹிம்':   'இப்ராஹீம்',
     'இஸ்மாயில்':   'இஸ்மாஈல்',
-    'ஸுலைமான்':    'ஸுலைமான்',
   };
 
   // ══════════════════════════════════════════════════════════════
@@ -317,6 +361,19 @@ class _TtsWorker {
   /// Variable pause durations — human narration never pauses the exact same
   /// duration twice. Using randomized ranges removes robotic rhythm.
   final Random _rng = Random();
+
+  // Pre-computed room tone buffers — avoids per-chunk random generation.
+  // One large buffer is generated once; slices are taken as needed.
+  static const int _roomToneBufLen = 16000; // 1 second at 16kHz
+  late final Float32List _roomToneBuf = _generateRoomToneBuf();
+
+  Float32List _generateRoomToneBuf() {
+    final buf = Float32List(_roomToneBufLen);
+    for (int i = 0; i < _roomToneBufLen; i++) {
+      buf[i] = (_rng.nextDouble() - 0.5) * 0.0008;
+    }
+    return buf;
+  }
 
   /// Waqf / salawat pause scaled by sentence length — imam-style pacing.
   /// Longer sentences get proportionally longer pauses for scholarly feel.
@@ -501,8 +558,8 @@ class _TtsWorker {
       // Initialize native engine via FFI
       _bindings = MnnTtsBindings();
       final pathPtr = modelPath.toNativeUtf8();
-      // 2 threads: saves battery & heat for a reading app (not latency-critical)
-      final rawPtr = _bindings!.createEngine(pathPtr, 2);
+      // 4 threads: use all big cores for faster inference
+      final rawPtr = _bindings!.createEngine(pathPtr, 4);
       calloc.free(pathPtr);
 
       if (rawPtr == nullptr) {
@@ -510,6 +567,10 @@ class _TtsWorker {
       } else {
         _enginePtr = rawPtr.cast<Void>();
       }
+
+      // Pre-allocate FFI output pointers (reused across all inference calls)
+      _outputDataPtr = calloc<Pointer<Float>>();
+      _outputLenPtr = calloc<IntPtr>();
 
       _isInitialized = true;
       _mainPort.send(TtsReady(_isNativeAvailable));
@@ -520,7 +581,13 @@ class _TtsWorker {
     }
   }
 
-  void synthesize(int requestId, String text) {
+  void synthesize(
+    int requestId,
+    String text, {
+    required double noiseScale,
+    required double lengthScale,
+    required double noiseScaleW,
+  }) {
     cancelled = false;
 
     try {
@@ -566,26 +633,29 @@ class _TtsWorker {
         // ── Build pre-silence buffer (merged into audio, NOT sent separately) ──
         //    Sending tiny separate chunks causes a race condition in the audio
         //    player where the completion event is lost, stalling playback.
-        Float32List? preSilence;
+        final Float32List preSilence;
         if (isFirstAudioChunk) {
           preSilence = _roomTone(_paragraphStartMs);
+        } else if (_containsSacred(chunk)) {
+          // Micro pitch reset + sacred pre-delay merged
+          final micro = _roomTone(12);
+          final sacred = _roomTone(_sacredPreDelayMs);
+          preSilence = Float32List(micro.length + sacred.length);
+          preSilence.setRange(0, micro.length, micro);
+          preSilence.setRange(micro.length, preSilence.length, sacred);
         } else {
-          if (_containsSacred(chunk)) {
-            // Micro pitch reset + sacred pre-delay merged
-            final micro = _roomTone(12);
-            final sacred = _roomTone(_sacredPreDelayMs);
-            preSilence = Float32List(micro.length + sacred.length);
-            preSilence.setRange(0, micro.length, micro);
-            preSilence.setRange(micro.length, preSilence.length, sacred);
-          } else {
-            preSilence = _roomTone(12); // micro pitch reset only
-          }
+          preSilence = _roomTone(12); // micro pitch reset only
         }
 
         // ── Synthesize with native FFI (guarded against crashes) ──
         Float32List? raw;
         try {
-          raw = _synthesizeNative(chunkTokens);
+          raw = _synthesizeNative(
+            chunkTokens,
+            noiseScale: noiseScale,
+            lengthScale: lengthScale,
+            noiseScaleW: noiseScaleW,
+          );
         } catch (e) {
           debugPrint('TTS-Isolate: chunk ${i+1} native error: $e');
           continue;
@@ -597,10 +667,8 @@ class _TtsWorker {
 
         final trimmed = _trimSilence(raw);
         if (trimmed.isEmpty) {
-          debugPrint('TTS-Isolate: chunk ${i+1} all silence after trim');
           continue;
         }
-        debugPrint('TTS-Isolate: chunk ${i+1} raw=${raw.length} trimmed=${trimmed.length} (${(trimmed.length/16000).toStringAsFixed(2)}s)');
 
         // First successful audio produced
         isFirstAudioChunk = false;
@@ -641,12 +709,10 @@ class _TtsWorker {
         }
 
         // ── Prepend pre-silence into the audio (one chunk = one WAV file) ──
-        if (preSilence != null) {
-          final combined = Float32List(preSilence.length + emitAudio.length);
-          combined.setRange(0, preSilence.length, preSilence);
-          combined.setRange(preSilence.length, combined.length, emitAudio);
-          emitAudio = combined;
-        }
+        final combined = Float32List(preSilence.length + emitAudio.length);
+        combined.setRange(0, preSilence.length, preSilence);
+        combined.setRange(preSilence.length, combined.length, emitAudio);
+        emitAudio = combined;
 
         _mainPort.send(TtsChunk(requestId, emitAudio));
       }
@@ -720,7 +786,7 @@ class _TtsWorker {
     //     Duplicate vowel sign so VITS holds the sound longer.
     //     Apply only ONCE per word to prevent sing-song over-stretching.
     for (final entry in _longVowelFixes.entries) {
-      s = s.replaceFirst(entry.key, entry.value);
+      s = s.replaceAll(entry.key, entry.value);
     }
 
     // 6. Number → Tamil words (1–9999)
@@ -856,38 +922,40 @@ class _TtsWorker {
 
   // ── Native FFI inference ──
 
-  Float32List? _synthesizeNative(List<int> tokenIds) {
+  Float32List? _synthesizeNative(
+    List<int> tokenIds, {
+    required double noiseScale,
+    required double lengthScale,
+    required double noiseScaleW,
+  }) {
     final engine = _enginePtr!.cast<MNN_TTS_Engine>();
-    final inputPtr = calloc<Int64>(tokenIds.length);
-    for (int i = 0; i < tokenIds.length; i++) {
-      inputPtr[i] = tokenIds[i];
+    final len = tokenIds.length;
+
+    // Grow reusable input buffer if needed (never shrinks — avoids repeated alloc)
+    if (_inputPtr == null || _inputPtrLen < len) {
+      if (_inputPtr != null) calloc.free(_inputPtr!);
+      _inputPtrLen = len + 64; // over-allocate slightly to avoid frequent reallocs
+      _inputPtr = calloc<Int64>(_inputPtrLen);
     }
-    final outputDataPtr = calloc<Pointer<Float>>();
-    final outputLenPtr = calloc<IntPtr>();
+    for (int i = 0; i < len; i++) {
+      _inputPtr![i] = tokenIds[i];
+    }
 
-    try {
-      final result = _bindings!.synthesize(
-        engine, inputPtr, tokenIds.length,
-        0.667, 1.15, 0.8,  // noiseScale, lengthScale (1.15 = hadith narration pace), noiseScaleW
-        outputDataPtr, outputLenPtr,
-      );
+    final result = _bindings!.synthesize(
+      engine, _inputPtr!, len,
+      noiseScale, lengthScale, noiseScaleW,
+      _outputDataPtr!, _outputLenPtr!,
+    );
 
-      if (result == 0) {
-        final outputLen = outputLenPtr.value;
-        final outputPtr = outputDataPtr.value;
-        if (outputLen > 0 && outputPtr != nullptr) {
-          final nativeView = outputPtr.asTypedList(outputLen);
-          final audioData = Float32List.fromList(nativeView);
-          // No freeOutput call needed — buffer is engine-owned (reusable).
-          return audioData;
-        }
+    if (result == 0) {
+      final outputLen = _outputLenPtr!.value;
+      final outputPtr = _outputDataPtr!.value;
+      if (outputLen > 0 && outputPtr != nullptr) {
+        // Copy from engine-owned buffer (reused on next call)
+        return Float32List.fromList(outputPtr.asTypedList(outputLen));
       }
-      return null;
-    } finally {
-      calloc.free(inputPtr);
-      calloc.free(outputDataPtr);
-      calloc.free(outputLenPtr);
     }
+    return null;
   }
 
   // ── Audio helpers ──
@@ -911,22 +979,64 @@ class _TtsWorker {
   }
 
   /// Generate ultra-low room ambience (~−55 dB white noise).
-  /// Pure digital silence sounds unnatural to human ears;
-  /// faint room tone makes the brain perceive a real recording.
+  /// Uses a pre-computed buffer for speed — just slice from a random offset.
   Float32List _roomTone(int ms) {
     final samples = (_sampleRate * ms / 1000).toInt();
-    final out = Float32List(samples);
-    for (int i = 0; i < samples; i++) {
-      out[i] = (_rng.nextDouble() - 0.5) * 0.0008;
+    if (samples <= 0) return Float32List(0);
+    if (samples >= _roomToneBufLen) {
+      // Rare: very long pause — tile from pre-computed buffer
+      final out = Float32List(samples);
+      for (int i = 0; i < samples; i++) {
+        out[i] = _roomToneBuf[i % _roomToneBufLen];
+      }
+      return out;
     }
-    return out;
+    // Fast path: slice from a random offset in the pre-computed buffer
+    final maxStart = _roomToneBufLen - samples;
+    final start = _rng.nextInt(maxStart + 1);
+    return Float32List.sublistView(_roomToneBuf, start, start + samples);
   }
 
   Float32List _appendSilence(Float32List audio, int ms) {
-    final tone = _roomTone(ms);
-    final result = Float32List(audio.length + tone.length);
+    final silenceSamples = (_sampleRate * ms / 1000).toInt();
+    if (silenceSamples <= 0) return audio;
+    final result = Float32List(audio.length + silenceSamples);
     result.setRange(0, audio.length, audio);
-    result.setRange(audio.length, result.length, tone);
+    // Fill silence from pre-computed room tone buffer
+    for (int i = 0; i < silenceSamples; i++) {
+      result[audio.length + i] = _roomToneBuf[i % _roomToneBufLen];
+    }
     return result;
+  }
+
+  /// Destroy the native MNN engine and free all pre-allocated FFI pointers.
+  /// Called when the isolate is about to be killed (model switch or app exit).
+  void destroyAndFree() {
+    if (_enginePtr != null && _enginePtr != nullptr && _bindings != null) {
+      try {
+        _bindings!.destroyEngine(_enginePtr!.cast<MNN_TTS_Engine>());
+        debugPrint('TTS Worker: Native engine destroyed');
+      } catch (e) {
+        debugPrint('TTS Worker: destroyEngine error: $e');
+      }
+      _enginePtr = null;
+    }
+
+    if (_outputDataPtr != null) {
+      calloc.free(_outputDataPtr!);
+      _outputDataPtr = null;
+    }
+    if (_outputLenPtr != null) {
+      calloc.free(_outputLenPtr!);
+      _outputLenPtr = null;
+    }
+    if (_inputPtr != null) {
+      calloc.free(_inputPtr!);
+      _inputPtr = null;
+      _inputPtrLen = 0;
+    }
+
+    _isInitialized = false;
+    debugPrint('TTS Worker: FFI pointers freed');
   }
 }

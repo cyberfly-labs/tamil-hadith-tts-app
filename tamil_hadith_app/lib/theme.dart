@@ -147,42 +147,113 @@ class AppTheme {
     );
   }
 
+  // ── Dark Theme Palette ──
+  static const Color darkSurface = Color(0xFF121212);
+  static const Color darkCard = Color(0xFF1E1E1E);
+  static const Color darkBorder = Color(0xFF2E2E2E);
+  static const Color darkSubtle = Color(0xFF9E9E9E);
+  static const Color darkEmerald = Color(0xFF2D8B6F);
+  static const Color darkGold = Color(0xFFE8C882);
+
   static ThemeData get darkTheme {
     final colorScheme = ColorScheme.fromSeed(
       seedColor: emerald,
       brightness: Brightness.dark,
+      surface: darkSurface,
     );
     return ThemeData(
       useMaterial3: true,
       colorScheme: colorScheme,
+      scaffoldBackgroundColor: darkSurface,
+
+      // ── AppBar ──
       appBarTheme: AppBarTheme(
+        backgroundColor: const Color(0xFF0A2E20),
+        foregroundColor: const Color(0xFFF5F0E8),
         elevation: 0,
-        scrolledUnderElevation: 1,
+        scrolledUnderElevation: 0,
         centerTitle: true,
-        titleTextStyle: TextStyle(
-          fontSize: 18,
-          fontWeight: FontWeight.w600,
-          color: colorScheme.onSurface,
+        titleTextStyle: const TextStyle(
+          fontSize: 19,
+          fontWeight: FontWeight.w700,
+          color: Color(0xFFF5F0E8),
+          letterSpacing: 0.3,
         ),
       ),
+
+      // ── Cards ──
       cardTheme: CardThemeData(
+        color: darkCard,
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(14),
-          side: const BorderSide(color: Colors.white12),
+          side: const BorderSide(color: darkBorder, width: 1),
         ),
         margin: EdgeInsets.zero,
       ),
+
+      // ── Chips ──
       chipTheme: ChipThemeData(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        backgroundColor: darkCard,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: const BorderSide(color: darkBorder, width: 1),
+        ),
         side: BorderSide.none,
+        labelStyle: TextStyle(color: colorScheme.onSurface, fontWeight: FontWeight.w600, fontSize: 12),
       ),
+
+      // ── Buttons ──
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
+          backgroundColor: darkEmerald,
+          foregroundColor: const Color(0xFFF5F0E8),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+          textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15, letterSpacing: 0.2),
+          elevation: 0,
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         ),
       ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          side: const BorderSide(color: darkBorder, width: 1),
+          foregroundColor: darkEmerald,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      ),
+
+      // ── Navigation Bar ──
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: darkCard,
+        elevation: 0,
+        height: 68,
+        indicatorColor: darkEmerald.withValues(alpha: 0.15),
+        labelTextStyle: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: darkGold);
+          }
+          return const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: darkSubtle);
+        }),
+        iconTheme: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return const IconThemeData(color: darkGold, size: 24);
+          }
+          return const IconThemeData(color: darkSubtle, size: 24);
+        }),
+      ),
+
+      // ── Divider ──
+      dividerTheme: const DividerThemeData(color: darkBorder, thickness: 1, space: 0),
+
+      // ── ListTile ──
+      listTileTheme: ListTileThemeData(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        titleTextStyle: TextStyle(color: colorScheme.onSurface, fontSize: 15, fontWeight: FontWeight.w600),
+        subtitleTextStyle: const TextStyle(color: darkSubtle, fontSize: 13, fontWeight: FontWeight.w500),
+      ),
+
+      // ── Page transitions ──
       pageTransitionsTheme: const PageTransitionsTheme(
         builders: {
           TargetPlatform.android: CupertinoPageTransitionsBuilder(),

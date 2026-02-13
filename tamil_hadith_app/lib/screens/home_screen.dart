@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../models/hadith.dart';
 import '../services/hadith_database.dart';
 import '../services/quran_database.dart';
+import '../widgets/animated_press_card.dart';
+import '../widgets/shimmer_loading.dart';
+import '../widgets/scroll_to_top_fab.dart';
 import 'bookmarks_screen.dart';
 import 'hadith_detail_screen.dart';
 import 'hadith_list_screen.dart';
@@ -30,7 +34,10 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final bodies = [
-      QuranSuraListScreen(database: widget.quranDatabase),
+      QuranSuraListScreen(
+        database: widget.quranDatabase,
+        hadithDatabase: widget.hadithDatabase,
+      ),
       _HadithHomeBody(database: widget.hadithDatabase),
     ];
 
@@ -41,14 +48,31 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
-          color: const Color(0xFFFFFDF9),
+          color: Theme.of(context).brightness == Brightness.dark
+              ? const Color(0xFF1E1E1E)
+              : const Color(0xFFFFFDF9),
           border: Border(
-            top: BorderSide(color: const Color(0xFFE8DDD0), width: 1),
+            top: BorderSide(
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? const Color(0xFF2E2E2E)
+                  : const Color(0xFFE8DDD0),
+              width: 1,
+            ),
           ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.06),
+              blurRadius: 12,
+              offset: const Offset(0, -3),
+            ),
+          ],
         ),
         child: NavigationBar(
           selectedIndex: _currentTab,
-          onDestinationSelected: (i) => setState(() => _currentTab = i),
+          onDestinationSelected: (i) {
+            HapticFeedback.selectionClick();
+            setState(() => _currentTab = i);
+          },
           destinations: const [
             NavigationDestination(
               icon: Icon(Icons.menu_book_outlined),
@@ -80,6 +104,7 @@ class _HadithHomeBody extends StatefulWidget {
 class _HadithHomeBodyState extends State<_HadithHomeBody>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  final ScrollController _scrollController = ScrollController();
   HadithCollection _selectedCollection = HadithCollection.bukhari;
 
   // Book index + counts per collection
@@ -106,6 +131,7 @@ class _HadithHomeBodyState extends State<_HadithHomeBody>
   @override
   void dispose() {
     _tabController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -131,8 +157,31 @@ class _HadithHomeBodyState extends State<_HadithHomeBody>
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+      return Scaffold(
+        body: CustomScrollView(
+          slivers: [
+            SliverAppBar(
+              expandedHeight: 240,
+              floating: false,
+              pinned: true,
+              backgroundColor: const Color(0xFF1B4D3E),
+              foregroundColor: const Color(0xFFFAF8F3),
+              title: const Text('ஹதீஸ்'),
+              flexibleSpace: FlexibleSpaceBar(
+                background: Container(
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [Color(0xFF1B4D3E), Color(0xFF0D3020)],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            SliverToBoxAdapter(child: SkeletonList(itemCount: 6)),
+          ],
+        ),
       );
     }
 
@@ -141,6 +190,7 @@ class _HadithHomeBodyState extends State<_HadithHomeBody>
 
     return Scaffold(
       body: CustomScrollView(
+        controller: _scrollController,
         slivers: [
           // ── Collapsing App Bar with hero header ──
           SliverAppBar(
@@ -159,6 +209,8 @@ class _HadithHomeBodyState extends State<_HadithHomeBody>
                   MaterialPageRoute(
                     builder: (_) => BookmarksScreen(
                       database: widget.database,
+                      quranDatabase: (context.findAncestorWidgetOfExactType<HomeScreen>()?.quranDatabase) ??
+                          (context.findAncestorStateOfType<_HomeScreenState>()?.widget.quranDatabase)!,
                     ),
                   ),
                 ),
@@ -369,10 +421,7 @@ class _HadithHomeBodyState extends State<_HadithHomeBody>
                   final bookIdx = books[index];
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 10),
-                    child: _BookIndexCard(
-                      bookIndex: bookIdx,
-                      index: index + 1,
-                      collection: _selectedCollection,
+                    child: AnimatedPressCard(
                       onTap: () {
                         Navigator.push(
                           context,
@@ -386,6 +435,24 @@ class _HadithHomeBodyState extends State<_HadithHomeBody>
                           ),
                         );
                       },
+                      child: _BookIndexCard(
+                        bookIndex: bookIdx,
+                        index: index + 1,
+                        collection: _selectedCollection,
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => HadithListScreen(
+                                database: widget.database,
+                                collection: _selectedCollection,
+                                bookNumber: bookIdx.bookNumber,
+                                bookTitle: bookIdx.bookTitle,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
                     ),
                   );
                 },
@@ -395,6 +462,7 @@ class _HadithHomeBodyState extends State<_HadithHomeBody>
           ),
         ],
       ),
+      floatingActionButton: ScrollToTopFab(scrollController: _scrollController),
     );
   }
 
@@ -515,8 +583,13 @@ class _HadithSearchDelegate extends SearchDelegate<Hadith?> {
 
   _HadithSearchDelegate(this.database, this.activeCollection);
 
+  // Cache search results so scroll position is preserved on back-navigation
+  String _lastQuery = '';
+  Future<List<Hadith>>? _cachedFuture;
+  List<Hadith>? _cachedResults;
+
   @override
-  String get searchFieldLabel => 'ஹதீஸ் தேடுங்கள்...';
+  String get searchFieldLabel => 'உரை அல்லது எண் தேடுங்கள்...';
 
   @override
   ThemeData appBarTheme(BuildContext context) {
@@ -560,9 +633,12 @@ class _HadithSearchDelegate extends SearchDelegate<Hadith?> {
     return _buildSearchResults();
   }
 
+  /// Check if query is a hadith number (pure digits)
+  static final RegExp _numberPattern = RegExp(r'^\d+$');
+
   @override
   Widget buildSuggestions(BuildContext context) {
-    if (query.length < 2) {
+    if (query.isEmpty) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -575,7 +651,7 @@ class _HadithSearchDelegate extends SearchDelegate<Hadith?> {
                     .withValues(alpha: 0.15)),
             const SizedBox(height: 12),
             Text(
-              'குறைந்தது 2 எழுத்துகள் தட்டச்சு செய்யவும்',
+              'உரை அல்லது ஹதீஸ் எண் தேடுங்கள்',
               style: TextStyle(
                 color: Theme.of(context)
                     .colorScheme
@@ -587,63 +663,108 @@ class _HadithSearchDelegate extends SearchDelegate<Hadith?> {
         ),
       );
     }
+    // Allow single-char queries for number search
+    if (!_numberPattern.hasMatch(query.trim()) && query.length < 2) {
+      return Center(
+        child: Text(
+          'குறைந்தது 2 எழுத்துகள் தட்டச்சு செய்யவும்',
+          style: TextStyle(
+            color: Theme.of(context)
+                .colorScheme
+                .onSurface
+                .withValues(alpha: 0.4),
+          ),
+        ),
+      );
+    }
     return _buildSearchResults();
   }
 
+  /// Search by number or by text depending on query format
+  Future<List<Hadith>> _searchByQuery() async {
+    final trimmed = query.trim();
+    if (_numberPattern.hasMatch(trimmed)) {
+      final number = int.tryParse(trimmed);
+      if (number != null && number > 0) {
+        // Search by exact hadith number across both collections
+        final results = <Hadith>[];
+        final bukhari = await database.getHadith(HadithCollection.bukhari, number);
+        if (bukhari != null) results.add(bukhari);
+        final muslim = await database.getHadith(HadithCollection.muslim, number);
+        if (muslim != null) results.add(muslim);
+        return results;
+      }
+    }
+    return database.searchHadiths(query);
+  }
+
   Widget _buildSearchResults() {
-    // Search across both collections
+    // Only re-query when the search text actually changes
+    if (query != _lastQuery) {
+      _lastQuery = query;
+      _cachedResults = null;
+      _cachedFuture = _searchByQuery().then((results) {
+        _cachedResults = results;
+        return results;
+      });
+    }
+    // If results are already cached, show them immediately (no loading frame)
+    if (_cachedResults != null) {
+      return _buildResultsList(_cachedResults!);
+    }
     return FutureBuilder<List<Hadith>>(
-      future: database.searchHadiths(query),
+      future: _cachedFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
         final results = snapshot.data ?? [];
-        if (results.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.search_off_rounded,
-                    size: 48,
-                    color: Theme.of(context)
-                        .colorScheme
-                        .onSurface
-                        .withValues(alpha: 0.15)),
-                const SizedBox(height: 12),
-                Text(
-                  'முடிவுகள் இல்லை',
-                  style: TextStyle(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .onSurface
-                        .withValues(alpha: 0.4),
-                  ),
-                ),
-              ],
+        _cachedResults = results;
+        return _buildResultsList(results);
+      },
+    );
+  }
+
+  Widget _buildResultsList(List<Hadith> results) {
+    if (results.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.search_off_rounded,
+                size: 48,
+                color: const Color(0xFF1A1A1A).withValues(alpha: 0.15)),
+            const SizedBox(height: 12),
+            Text(
+              'முடிவுகள் இல்லை',
+              style: TextStyle(
+                color: const Color(0xFF1A1A1A).withValues(alpha: 0.4),
+              ),
             ),
-          );
-        }
-        return ListView.separated(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          itemCount: results.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 8),
-          itemBuilder: (context, index) {
-            final hadith = results[index];
-            return Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: () {
-                  close(context, null);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => HadithDetailScreen(hadith: hadith),
-                    ),
-                  );
-                },
-                borderRadius: BorderRadius.circular(14),
-                child: Container(
+          ],
+        ),
+      );
+    }
+    return ListView.separated(
+      key: const PageStorageKey('hadith_search_results'),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      itemCount: results.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      itemBuilder: (context, index) {
+        final hadith = results[index];
+        return Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => HadithDetailScreen(hadith: hadith),
+                ),
+              );
+            },
+            borderRadius: BorderRadius.circular(14),
+            child: Container(
                   decoration: BoxDecoration(
                     color: const Color(0xFFFFFDF9),
                     borderRadius: BorderRadius.circular(14),
@@ -723,8 +844,6 @@ class _HadithSearchDelegate extends SearchDelegate<Hadith?> {
             );
           },
         );
-      },
-    );
   }
 }
 

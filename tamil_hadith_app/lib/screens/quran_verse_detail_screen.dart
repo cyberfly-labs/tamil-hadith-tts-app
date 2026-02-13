@@ -1,16 +1,16 @@
 import 'dart:async';
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
 
 import '../models/quran_verse.dart';
 import '../services/tts_engine.dart';
 import '../services/audio_player_service.dart';
 import '../services/audio_cache_service.dart';
+import '../widgets/waveform_animation.dart';
 
 // Re-use the same shared singletons from hadith_detail_screen
-import 'hadith_detail_screen.dart' show sharedTtsEngine, sharedAudioCache;
+import 'hadith_detail_screen.dart' show sharedTtsEngine, sharedAudioCache, sharedAudioPlayer;
 
 /// Detail screen for Quran sura playback.
 /// Receives the full list of verses for a sura and a start index.
@@ -32,9 +32,10 @@ class QuranVerseDetailScreen extends StatefulWidget {
 
 class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
   static final TtsEngine ttsEngine = sharedTtsEngine;
-  static final AudioPlayerService _audioPlayer = AudioPlayerService();
+  static final AudioPlayerService _audioPlayer = sharedAudioPlayer;
   static final AudioCacheService audioCache = sharedAudioCache;
   static bool _servicesInitialized = false;
+  static Future<void>? _servicesInitFuture;
 
   StreamSubscription<bool>? _playingSub;
 
@@ -54,6 +55,7 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
   static const List<double> _speedOptions = [0.75, 1.0, 1.25, 1.5];
 
   final ScrollController _scrollController = ScrollController();
+  late final List<GlobalKey> _verseKeys;
 
   QuranVerse get _currentVerse => widget.verses[_currentVerseIndex];
   int get _suraNumber => widget.verses.first.sura;
@@ -62,6 +64,7 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
   @override
   void initState() {
     super.initState();
+    _verseKeys = List.generate(widget.verses.length, (_) => GlobalKey());
     _currentVerseIndex = widget.startIndex;
     _initServices();
     _playingSub = _audioPlayer.playingStream.listen((playing) {
@@ -72,7 +75,10 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
   }
 
   Future<void> _initServices() async {
-    if (!_servicesInitialized) {
+    if (_servicesInitialized) return;
+
+    // Coalesce concurrent calls (initState + first-tap play)
+    _servicesInitFuture ??= () async {
       await _audioPlayer.initialize();
       await audioCache.initialize();
       try {
@@ -81,7 +87,9 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
         debugPrint('TTS init warning: $e');
       }
       _servicesInitialized = true;
-    }
+    }();
+
+    await _servicesInitFuture;
   }
 
   @override
@@ -90,17 +98,22 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
     _cancelPrefetch();
     _playingSub?.cancel();
     _scrollController.dispose();
+    // Cancel any in-flight synthesis so the isolate doesn't keep working
+    // for a screen that's already gone.
+    ttsEngine.cancelSynthesis();
     super.dispose();
   }
 
   void _scrollToVerse(int index) {
-    // Each verse card is roughly 120px high + 12px padding
-    final target = index * 132.0;
-    if (_scrollController.hasClients) {
-      _scrollController.animateTo(
-        target.clamp(0, _scrollController.position.maxScrollExtent),
+    if (index < 0 || index >= _verseKeys.length) return;
+    final key = _verseKeys[index];
+    final ctx = key.currentContext;
+    if (ctx != null) {
+      Scrollable.ensureVisible(
+        ctx,
         duration: const Duration(milliseconds: 400),
         curve: Curves.easeInOut,
+        alignment: 0.3, // position verse ~30% from top
       );
     }
   }
@@ -169,6 +182,10 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
               ),
             ),
             actions: [
+              _BookmarkButton(
+                verse: _currentVerse,
+                service: BookmarkService(),
+              ),
               IconButton(
                 icon: const Icon(Icons.text_decrease_rounded),
                 onPressed: () =>
@@ -194,8 +211,11 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
                   final isActive = _isSuraPlaying && index == _currentVerseIndex;
 
                   return Padding(
+                    key: _verseKeys[index],
                     padding: const EdgeInsets.only(bottom: 12),
-                    child: Container(
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOut,
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(
@@ -209,11 +229,17 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
                             : const Color(0xFFFFFDF9),
                         boxShadow: isActive ? [
                           BoxShadow(
-                            color: const Color(0xFFD4A04A).withValues(alpha: 0.1),
-                            blurRadius: 8,
-                            offset: const Offset(0, 2),
+                            color: const Color(0xFFD4A04A).withValues(alpha: 0.12),
+                            blurRadius: 12,
+                            offset: const Offset(0, 3),
                           ),
-                        ] : null,
+                        ] : [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.02),
+                            blurRadius: 4,
+                            offset: const Offset(0, 1),
+                          ),
+                        ],
                       ),
                       child: Padding(
                         padding: const EdgeInsets.all(12),
@@ -265,10 +291,11 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
                             if (isActive)
                               Padding(
                                 padding: const EdgeInsets.only(left: 4, top: 8),
-                                child: Icon(
-                                  Icons.volume_up_rounded,
-                                  size: 18,
+                                child: WaveformAnimation(
+                                  isPlaying: _isPlaying && isActive,
                                   color: const Color(0xFFD4A04A),
+                                  height: 18,
+                                  barCount: 4,
                                 ),
                               ),
                           ],
@@ -292,16 +319,19 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
   Widget _buildPlaybackBar(BuildContext context) {
     final showSpeed = _isPlaying ||
         _audioPlayer.player.processingState != ProcessingState.idle;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bgColor = isDark ? const Color(0xFF1E1E1E) : const Color(0xFFFFFDF9);
+    final borderColor = isDark ? const Color(0xFF2E2E2E) : const Color(0xFFE8DDD0);
 
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFFFFFDF9),
-        border: Border(top: BorderSide(color: const Color(0xFFE8DDD0), width: 1)),
+        color: bgColor,
+        border: Border(top: BorderSide(color: borderColor, width: 1)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 8,
-            offset: const Offset(0, -2),
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
+            blurRadius: 12,
+            offset: const Offset(0, -3),
           ),
         ],
       ),
@@ -311,16 +341,41 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Status text
-              if (_statusText.isNotEmpty)
+              // Status row with waveform
+              if (_statusText.isNotEmpty || _isPlaying)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Text(
-                    _statusText,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFF6B6B6B),
-                    ),
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (_isPlaying) ...[
+                        WaveformAnimation(
+                          isPlaying: _isPlaying,
+                          color: const Color(0xFFD4A04A),
+                          height: 16,
+                          barCount: 4,
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                      if (_isSynthesizing) ...[
+                        const PulsingDot(color: Color(0xFFD4A04A), size: 6),
+                        const SizedBox(width: 6),
+                      ],
+                      if (_statusText.isNotEmpty)
+                        Flexible(
+                          child: Text(
+                            _statusText,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                              color: isDark
+                                  ? const Color(0xFF9E9E9E)
+                                  : const Color(0xFF6B6B6B),
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                    ],
                   ),
                 ),
 
@@ -332,11 +387,14 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
                   if (_isSuraPlaying)
                     IconButton.outlined(
                       onPressed: _currentVerseIndex > 0
-                          ? () => _skipToVerse(_currentVerseIndex - 1)
+                          ? () {
+                              HapticFeedback.lightImpact();
+                              _skipToVerse(_currentVerseIndex - 1);
+                            }
                           : null,
                       icon: const Icon(Icons.skip_previous_rounded, size: 20),
                       style: IconButton.styleFrom(
-                        side: const BorderSide(color: Color(0xFFE8DDD0)),
+                        side: BorderSide(color: borderColor),
                       ),
                     ),
                   if (_isSuraPlaying) const SizedBox(width: 8),
@@ -356,14 +414,27 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
                           label: Text(
                             'வசனம் ${_currentVerse.aya}/${widget.verses.length}',
                           ),
+                          style: FilledButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 20, vertical: 14),
+                          ),
                         )
                       : FilledButton.icon(
-                          onPressed: _onPlayPause,
-                          icon: Icon(
-                            _isPlaying
-                                ? Icons.pause_rounded
-                                : Icons.play_arrow_rounded,
-                            size: 22,
+                          onPressed: () {
+                            HapticFeedback.mediumImpact();
+                            _onPlayPause();
+                          },
+                          icon: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 200),
+                            transitionBuilder: (child, anim) =>
+                                ScaleTransition(scale: anim, child: child),
+                            child: Icon(
+                              _isPlaying
+                                  ? Icons.pause_rounded
+                                  : Icons.play_arrow_rounded,
+                              key: ValueKey(_isPlaying),
+                              size: 22,
+                            ),
                           ),
                           label: Text(
                             _isPlaying
@@ -372,16 +443,23 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
                                     ? 'தொடர்'
                                     : 'சூரா ஒலிக்கவும்'),
                           ),
+                          style: FilledButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 20, vertical: 14),
+                          ),
                         ),
 
                   // Stop
                   if (_isPlaying || _isSuraPlaying) ...[
                     const SizedBox(width: 8),
                     IconButton.outlined(
-                      onPressed: _onStop,
+                      onPressed: () {
+                        HapticFeedback.lightImpact();
+                        _onStop();
+                      },
                       icon: const Icon(Icons.stop_rounded, size: 20),
                       style: IconButton.styleFrom(
-                        side: const BorderSide(color: Color(0xFFE8DDD0)),
+                        side: BorderSide(color: borderColor),
                       ),
                     ),
                   ],
@@ -392,44 +470,61 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
                     IconButton.outlined(
                       onPressed:
                           _currentVerseIndex < widget.verses.length - 1
-                              ? () => _skipToVerse(_currentVerseIndex + 1)
+                              ? () {
+                                  HapticFeedback.lightImpact();
+                                  _skipToVerse(_currentVerseIndex + 1);
+                                }
                               : null,
                       icon: const Icon(Icons.skip_next_rounded, size: 20),
                       style: IconButton.styleFrom(
-                        side: const BorderSide(color: Color(0xFFE8DDD0)),
+                        side: BorderSide(color: borderColor),
                       ),
                     ),
                 ],
               ),
 
-              // Speed chips
+              // Speed chips — compact pill
               if (showSpeed)
                 Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.speed_rounded,
-                          size: 15,
-                          color: Color(0xFF9E9E9E)),
-                      const SizedBox(width: 6),
-                      for (final speed in _speedOptions)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 2),
-                          child: ChoiceChip(
-                            label: Text('${speed}x',
-                                style: const TextStyle(fontSize: 11)),
-                            selected: _playbackSpeed == speed,
-                            onSelected: (_) => _onSpeedChange(speed),
-                            visualDensity: VisualDensity.compact,
-                            padding: EdgeInsets.zero,
-                            labelPadding:
-                                const EdgeInsets.symmetric(horizontal: 6),
-                            materialTapTargetSize:
-                                MaterialTapTargetSize.shrinkWrap,
+                  padding: const EdgeInsets.only(top: 10),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.05)
+                          : const Color(0xFF1B4D3E).withValues(alpha: 0.04),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.speed_rounded,
+                            size: 14,
+                            color: Color(0xFF9E9E9E)),
+                        const SizedBox(width: 4),
+                        for (final speed in _speedOptions)
+                          Padding(
+                            padding:
+                                const EdgeInsets.symmetric(horizontal: 1),
+                            child: ChoiceChip(
+                              label: Text('${speed}x',
+                                  style: const TextStyle(fontSize: 11)),
+                              selected: _playbackSpeed == speed,
+                              onSelected: (_) {
+                                HapticFeedback.selectionClick();
+                                _onSpeedChange(speed);
+                              },
+                              visualDensity: VisualDensity.compact,
+                              padding: EdgeInsets.zero,
+                              labelPadding:
+                                  const EdgeInsets.symmetric(horizontal: 6),
+                              materialTapTargetSize:
+                                  MaterialTapTargetSize.shrinkWrap,
+                            ),
                           ),
-                        ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
             ],
@@ -454,6 +549,9 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
   }
 
   Future<void> _onPlayPauseInternal() async {
+    // Ensure audio session/player + cache + TTS are ready before first play.
+    await _initServices();
+
     // If currently playing, pause
     if (_isPlaying) {
       await _audioPlayer.pause();
@@ -566,10 +664,11 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
       // ── 3. Play from cache if available ──
       if (cachedPath != null) {
         debugPrint('SuraPlay: Cache hit for ${verse.sura}:${verse.aya}');
-        await _audioPlayer.playFromFile(cachedPath);
+        // Start playback without blocking so prefetch can run concurrently.
+        await _audioPlayer.startPlayingFile(cachedPath);
         // Prefetch next verse while this one plays
         if (hasNext) _startPrefetch(nextIndex);
-        await _waitForPlaybackComplete();
+        await _audioPlayer.awaitPlaybackComplete();
         if (_cancelRequested || !mounted) break;
         setState(() => _currentVerseIndex++);
         continue;
@@ -588,7 +687,7 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
 
         bool firstChunk = true;
         int chunkCount = 0;
-        final List<Float32List> allChunks = [];
+        Future<String>? saveFuture;
 
         await for (final chunkAudio in ttsEngine.synthesizeStreaming(text)) {
           if (_cancelRequested || !mounted) {
@@ -597,7 +696,6 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
           }
 
           chunkCount++;
-          allChunks.add(chunkAudio);
           await _audioPlayer.addStreamingChunk(chunkAudio);
 
           if (firstChunk) {
@@ -623,30 +721,34 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
 
         _audioPlayer.finishStreaming();
 
-        // Save to cache in background
-        if (allChunks.isNotEmpty) {
-          final totalLen = allChunks.fold<int>(0, (sum, c) => sum + c.length);
-          final combined = Float32List(totalLen);
-          int offset = 0;
-          for (final chunk in allChunks) {
-            combined.setRange(offset, offset + chunk.length, chunk);
-            offset += chunk.length;
+        // Save to cache by stitching the already-written WAV chunks.
+        try {
+          final chunkFiles = await _audioPlayer.listChunkFiles();
+          if (chunkFiles.isNotEmpty) {
+            saveFuture = audioCache.saveWavChunksToCacheByKey(cacheKey, chunkFiles);
+            saveFuture.catchError((e) {
+              debugPrint('AudioCache: Failed to save $cacheKey (stitched): $e');
+              return '';
+            });
           }
-          allChunks.clear();
-          audioCache.saveToCacheByKey(cacheKey, combined).catchError((e) {
-            debugPrint('AudioCache: Failed to save $cacheKey: $e');
-            return '';
-          });
+        } catch (e) {
+          debugPrint('AudioCache: chunk list failed for $cacheKey: $e');
         }
 
         // ── KEY: Prefetch next verse while this one still plays ──
         if (hasNext) _startPrefetch(nextIndex);
 
-        // Wait for this verse to finish playing
-        await _waitForPlaybackComplete();
+        // Wait for ALL chunks to finish playing (not just the first one).
+        // awaitStreamingComplete() resolves only after the queue drains.
+        await _audioPlayer.awaitStreamingComplete();
         if (_cancelRequested || !mounted) break;
 
-        await _audioPlayer.cleanupChunks();
+        if (saveFuture != null) {
+          try {
+            await saveFuture;
+          } catch (_) {}
+        }
+        await _audioPlayer.cleanupChunks(all: true);
       } catch (e) {
         debugPrint('SuraPlay: Error on ${verse.sura}:${verse.aya}: $e');
         if (mounted) setState(() => _isSynthesizing = false);
@@ -672,40 +774,13 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
     }
   }
 
-  /// Wait until the audio player finishes the current track.
-  Future<void> _waitForPlaybackComplete() async {
-    // If the player is idle/completed already, return immediately
-    if (_audioPlayer.player.processingState == ProcessingState.completed ||
-        _audioPlayer.player.processingState == ProcessingState.idle) {
-      return;
-    }
-
-    final completer = Completer<void>();
-    late StreamSubscription<ProcessingState> sub;
-    sub = _audioPlayer.player.processingStateStream.listen((state) {
-      if (state == ProcessingState.completed || state == ProcessingState.idle) {
-        if (!completer.isCompleted) completer.complete();
-        sub.cancel();
-      }
-    });
-
-    // Also handle if user pauses — we need to wait for resume+complete
-    // Add a timeout to avoid hanging forever
-    await completer.future.timeout(
-      const Duration(minutes: 10),
-      onTimeout: () {
-        sub.cancel();
-      },
-    );
-  }
-
   void _skipToVerse(int index) {
     // Cancel current synthesis + prefetch, stop playback, jump to new verse
     _cancelRequested = true;
     _cancelPrefetch();
     ttsEngine.cancelSynthesis();
     _audioPlayer.stop().then((_) {
-      _audioPlayer.cleanupChunks();
+      _audioPlayer.cleanupChunks(all: true);
       if (mounted) {
         setState(() {
           _currentVerseIndex = index;
@@ -725,7 +800,7 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
     try {
       ttsEngine.cancelSynthesis();
       await _audioPlayer.stop();
-      await _audioPlayer.cleanupChunks();
+      await _audioPlayer.cleanupChunks(all: true);
     } catch (e) {
       debugPrint('Stop error: $e');
     }
@@ -745,6 +820,41 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
 }
 
 /// Gold-accented info chip for the collapsing header
+class _BookmarkButton extends StatelessWidget {
+  final QuranVerse verse;
+  final BookmarkService service;
+
+  const _BookmarkButton({required this.verse, required this.service});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: service,
+      builder: (context, _) {
+        final isBookmarked = service.isBookmarked(verse.cacheKey);
+        return IconButton(
+          icon: Icon(
+            isBookmarked ? Icons.bookmark_rounded : Icons.bookmark_outline_rounded,
+            color: isBookmarked ? const Color(0xFFD4A04A) : null,
+          ),
+          onPressed: () async {
+            HapticFeedback.mediumImpact();
+            await service.toggleBookmark(
+              key: verse.cacheKey,
+              collection: 'quran',
+              hadithNumber: verse.aya,
+              book: verse.sura.toString(),
+              chapter: SuraNames.getName(verse.sura),
+              textTamil: verse.text,
+            );
+          },
+          tooltip: isBookmarked ? 'புக்மார்க் நீக்கு' : 'புக்மார்க் செய்',
+        );
+      },
+    );
+  }
+}
+
 class _InfoChip extends StatelessWidget {
   final IconData icon;
   final String label;

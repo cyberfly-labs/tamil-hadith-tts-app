@@ -15,7 +15,8 @@ import 'model_download_service.dart';
 /// VITS inference parameters from mms-tts-tam config.json
 class VitsConfig {
   static const double noiseScale = 0.667;
-  static const double lengthScale = 1.0;
+  // Keep in sync with the isolate defaults (hadith narration pacing).
+  static const double lengthScale = 1.15;
   static const double noiseScaleW = 0.8;
   static const int sampleRate = 16000;
 }
@@ -106,7 +107,12 @@ class TtsEngine {
       return Stream.value(_generatePlaceholderAudio(100));
     }
 
-    return _runner.synthesizeStreaming(text);
+    return _runner.synthesizeStreaming(
+      text,
+      noiseScale: noiseScale,
+      lengthScale: lengthScale,
+      noiseScaleW: noiseScaleW,
+    );
   }
 
   /// Synthesize the full text and return a single combined PCM buffer.
@@ -125,7 +131,12 @@ class TtsEngine {
     }
 
     final chunks = <Float32List>[];
-    await for (final chunk in _runner.synthesizeStreaming(text)) {
+    await for (final chunk in _runner.synthesizeStreaming(
+      text,
+      noiseScale: noiseScale,
+      lengthScale: lengthScale,
+      noiseScaleW: noiseScaleW,
+    )) {
       chunks.add(chunk);
     }
 

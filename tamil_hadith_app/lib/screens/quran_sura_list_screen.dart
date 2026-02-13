@@ -1,21 +1,33 @@
 import 'package:flutter/material.dart';
 
 import '../models/quran_verse.dart';
+import '../services/hadith_database.dart';
 import '../services/quran_database.dart';
+import '../widgets/animated_press_card.dart';
+import '../widgets/shimmer_loading.dart';
+import '../widgets/scroll_to_top_fab.dart';
+import 'bookmarks_screen.dart';
 import 'quran_verse_list_screen.dart';
 import 'quran_verse_detail_screen.dart';
+import 'settings_screen.dart';
 
 /// Home screen for Quran — list of 114 suras
 class QuranSuraListScreen extends StatefulWidget {
   final QuranDatabase database;
+  final HadithDatabase hadithDatabase;
 
-  const QuranSuraListScreen({super.key, required this.database});
+  const QuranSuraListScreen({
+    super.key,
+    required this.database,
+    required this.hadithDatabase,
+  });
 
   @override
   State<QuranSuraListScreen> createState() => _QuranSuraListScreenState();
 }
 
 class _QuranSuraListScreenState extends State<QuranSuraListScreen> {
+  final ScrollController _scrollController = ScrollController();
   bool _isLoading = true;
   int _totalVerses = 0;
 
@@ -23,6 +35,12 @@ class _QuranSuraListScreenState extends State<QuranSuraListScreen> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -37,8 +55,33 @@ class _QuranSuraListScreenState extends State<QuranSuraListScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? CustomScrollView(
+              slivers: [
+                SliverAppBar(
+                  expandedHeight: 220,
+                  floating: false,
+                  pinned: true,
+                  backgroundColor: const Color(0xFF1B4D3E),
+                  foregroundColor: const Color(0xFFFAF8F3),
+                  centerTitle: true,
+                  title: const Text('திருக்குர்ஆன்'),
+                  flexibleSpace: FlexibleSpaceBar(
+                    background: Container(
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [Color(0xFF1B4D3E), Color(0xFF0D3020)],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                SliverToBoxAdapter(child: SkeletonList(itemCount: 6)),
+              ],
+            )
           : CustomScrollView(
+              controller: _scrollController,
               slivers: [
                 // ── Collapsing App Bar ──
                 SliverAppBar(
@@ -52,9 +95,32 @@ class _QuranSuraListScreenState extends State<QuranSuraListScreen> {
                   title: const Text('திருக்குர்ஆன்'),
                   actions: [
                     IconButton(
+                      icon: const Icon(Icons.bookmark_rounded),
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => BookmarksScreen(
+                            database: widget.hadithDatabase,
+                            quranDatabase: widget.database,
+                          ),
+                        ),
+                      ),
+                      tooltip: 'புக்மார்க்கள்',
+                    ),
+                    IconButton(
                       icon: const Icon(Icons.search_rounded),
                       onPressed: () => _showSearch(context),
                       tooltip: 'தேடு',
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.settings_rounded),
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const SettingsScreen(),
+                        ),
+                      ),
+                      tooltip: 'அமைப்புகள்',
                     ),
                   ],
                   flexibleSpace: FlexibleSpaceBar(
@@ -219,10 +285,7 @@ class _QuranSuraListScreenState extends State<QuranSuraListScreen> {
                         final suraNum = index + 1;
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 10),
-                          child: _SuraCard(
-                            suraNumber: suraNum,
-                            suraName: SuraNames.getName(suraNum),
-                            verseCount: SuraNames.getVerseCount(suraNum),
+                          child: AnimatedPressCard(
                             onTap: () {
                               Navigator.push(
                                 context,
@@ -234,6 +297,22 @@ class _QuranSuraListScreenState extends State<QuranSuraListScreen> {
                                 ),
                               );
                             },
+                            child: _SuraCard(
+                              suraNumber: suraNum,
+                              suraName: SuraNames.getName(suraNum),
+                              verseCount: SuraNames.getVerseCount(suraNum),
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => QuranVerseListScreen(
+                                      database: widget.database,
+                                      suraNumber: suraNum,
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
                           ),
                         );
                       },
@@ -243,6 +322,9 @@ class _QuranSuraListScreenState extends State<QuranSuraListScreen> {
                 ),
               ],
             ),
+      floatingActionButton: _isLoading
+          ? null
+          : ScrollToTopFab(scrollController: _scrollController),
     );
   }
 
@@ -366,8 +448,13 @@ class _QuranSearchDelegate extends SearchDelegate<QuranVerse?> {
 
   _QuranSearchDelegate(this.database);
 
+  // Cache search results so scroll position is preserved on back-navigation
+  String _lastQuery = '';
+  Future<List<QuranVerse>>? _cachedFuture;
+  List<QuranVerse>? _cachedResults;
+
   @override
-  String get searchFieldLabel => 'வசனம் தேடுங்கள்...';
+  String get searchFieldLabel => 'உரை அல்லது சூரா:வசனம் தேடுங்கள்...';
 
   @override
   ThemeData appBarTheme(BuildContext context) {
@@ -409,9 +496,14 @@ class _QuranSearchDelegate extends SearchDelegate<QuranVerse?> {
   @override
   Widget buildResults(BuildContext context) => _buildSearchResults();
 
+  /// Matches sura:aya pattern (e.g. "2:255", "114:1")
+  static final RegExp _verseRefPattern = RegExp(r'^(\d+):(\d+)$');
+  /// Matches standalone sura number (e.g. "2", "114")
+  static final RegExp _suraNumPattern = RegExp(r'^\d+$');
+
   @override
   Widget buildSuggestions(BuildContext context) {
-    if (query.length < 2) {
+    if (query.isEmpty) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -424,7 +516,7 @@ class _QuranSearchDelegate extends SearchDelegate<QuranVerse?> {
                     .withValues(alpha: 0.15)),
             const SizedBox(height: 12),
             Text(
-              'குறைந்தது 2 எழுத்துகள் தட்டச்சு செய்யவும்',
+              'உரை அல்லது சூரா:வசனம் தேடுங்கள்',
               style: TextStyle(
                 color: Theme.of(context)
                     .colorScheme
@@ -436,66 +528,122 @@ class _QuranSearchDelegate extends SearchDelegate<QuranVerse?> {
         ),
       );
     }
+    // Allow single-char queries for number-based search
+    final trimmed = query.trim();
+    final isNumeric = _verseRefPattern.hasMatch(trimmed) || _suraNumPattern.hasMatch(trimmed);
+    if (!isNumeric && query.length < 2) {
+      return Center(
+        child: Text(
+          'குறைந்தது 2 எழுத்துகள் தட்டச்சு செய்யவும்',
+          style: TextStyle(
+            color: Theme.of(context)
+                .colorScheme
+                .onSurface
+                .withValues(alpha: 0.4),
+          ),
+        ),
+      );
+    }
     return _buildSearchResults();
   }
 
+  /// Search by sura:aya, sura number, or text depending on query format
+  Future<List<QuranVerse>> _searchByQuery() async {
+    final trimmed = query.trim();
+
+    // Pattern: "2:255" → specific verse
+    final refMatch = _verseRefPattern.firstMatch(trimmed);
+    if (refMatch != null) {
+      final sura = int.tryParse(refMatch.group(1)!);
+      final aya = int.tryParse(refMatch.group(2)!);
+      if (sura != null && aya != null && sura >= 1 && sura <= 114) {
+        final verse = await database.getVerse(sura, aya);
+        return verse != null ? [verse] : [];
+      }
+    }
+
+    // Pattern: "2" → all verses of sura 2
+    if (_suraNumPattern.hasMatch(trimmed)) {
+      final sura = int.tryParse(trimmed);
+      if (sura != null && sura >= 1 && sura <= 114) {
+        return database.getVersesBySura(sura);
+      }
+    }
+
+    return database.searchVerses(query);
+  }
+
   Widget _buildSearchResults() {
+    // Only re-query when the search text actually changes
+    if (query != _lastQuery) {
+      _lastQuery = query;
+      _cachedResults = null;
+      _cachedFuture = _searchByQuery().then((results) {
+        _cachedResults = results;
+        return results;
+      });
+    }
+    // If results are already cached, show them immediately (no loading frame)
+    if (_cachedResults != null) {
+      return _buildResultsList(_cachedResults!);
+    }
     return FutureBuilder<List<QuranVerse>>(
-      future: database.searchVerses(query),
+      future: _cachedFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
         final results = snapshot.data ?? [];
-        if (results.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.search_off_rounded,
-                    size: 48,
-                    color: Theme.of(context)
-                        .colorScheme
-                        .onSurface
-                        .withValues(alpha: 0.15)),
-                const SizedBox(height: 12),
-                Text(
-                  'முடிவுகள் இல்லை',
-                  style: TextStyle(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .onSurface
-                        .withValues(alpha: 0.4),
-                  ),
-                ),
-              ],
+        _cachedResults = results;
+        return _buildResultsList(results);
+      },
+    );
+  }
+
+  Widget _buildResultsList(List<QuranVerse> results) {
+    if (results.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.search_off_rounded,
+                size: 48,
+                color: const Color(0xFF1A1A1A).withValues(alpha: 0.15)),
+            const SizedBox(height: 12),
+            Text(
+              'முடிவுகள் இல்லை',
+              style: TextStyle(
+                color: const Color(0xFF1A1A1A).withValues(alpha: 0.4),
+              ),
             ),
-          );
-        }
-        return ListView.separated(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          itemCount: results.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 8),
-          itemBuilder: (context, index) {
-            final verse = results[index];
-            return Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: () {
-                  close(context, null);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) =>
-                          QuranVerseDetailScreen(
-                            verses: [verse],
-                            startIndex: 0,
-                          ),
-                    ),
-                  );
-                },
-                borderRadius: BorderRadius.circular(14),
-                child: Container(
+          ],
+        ),
+      );
+    }
+    return ListView.separated(
+      key: const PageStorageKey('quran_search_results'),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      itemCount: results.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      itemBuilder: (context, index) {
+        final verse = results[index];
+        return Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) =>
+                      QuranVerseDetailScreen(
+                        verses: [verse],
+                        startIndex: 0,
+                      ),
+                ),
+              );
+            },
+            borderRadius: BorderRadius.circular(14),
+            child: Container(
                   decoration: BoxDecoration(
                     color: const Color(0xFFFFFDF9),
                     borderRadius: BorderRadius.circular(14),
@@ -554,7 +702,5 @@ class _QuranSearchDelegate extends SearchDelegate<QuranVerse?> {
             );
           },
         );
-      },
-    );
   }
 }

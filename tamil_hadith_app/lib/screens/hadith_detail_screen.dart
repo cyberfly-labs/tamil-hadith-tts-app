@@ -1,7 +1,6 @@
 import 'dart:async';
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
 
 import '../models/hadith.dart';
@@ -9,12 +8,14 @@ import '../services/tts_engine.dart';
 import '../services/audio_player_service.dart';
 import '../services/audio_cache_service.dart';
 import '../services/bookmark_service.dart';
+import '../widgets/waveform_animation.dart';
 
 /// Detail screen for a single hadith with TTS audio playback
-/// Shared singletons for TTS engine and audio cache.
-/// Used by both HadithDetailScreen and PreCacheService.
+/// Shared singletons for TTS engine, audio cache, and audio player.
+/// Used by both HadithDetailScreen, QuranVerseDetailScreen, and SettingsScreen.
 final sharedTtsEngine = TtsEngine();
 final sharedAudioCache = AudioCacheService();
+final sharedAudioPlayer = AudioPlayerService();
 
 class HadithDetailScreen extends StatefulWidget {
   final Hadith hadith;
@@ -28,10 +29,11 @@ class HadithDetailScreen extends StatefulWidget {
 class _HadithDetailScreenState extends State<HadithDetailScreen> {
   // TTS engine and audio player are obtained from the app-level singletons
   static final TtsEngine ttsEngine = sharedTtsEngine;
-  static final AudioPlayerService _audioPlayer = AudioPlayerService();
+  static final AudioPlayerService _audioPlayer = sharedAudioPlayer;
   static final AudioCacheService audioCache = sharedAudioCache;
   static final BookmarkService _bookmarkService = BookmarkService();
   static bool _servicesInitialized = false;
+  static Future<void>? _servicesInitFuture;
   static String? _currentlyLoadedHadith; // Track which hadith audio is loaded
 
   StreamSubscription<bool>? _playingSub;
@@ -56,7 +58,10 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
   }
 
   Future<void> _initServices() async {
-    if (!_servicesInitialized) {
+    if (_servicesInitialized) return;
+
+    // Coalesce concurrent calls (initState + first-tap play)
+    _servicesInitFuture ??= () async {
       await _audioPlayer.initialize();
       await audioCache.initialize();
       try {
@@ -65,7 +70,9 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
         debugPrint('TTS init warning: $e');
       }
       _servicesInitialized = true;
-    }
+    }();
+
+    await _servicesInitFuture;
   }
 
   @override
@@ -291,16 +298,19 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
   Widget _buildPlaybackBar(BuildContext context) {
     final showSpeed = _isPlaying ||
         _audioPlayer.player.processingState != ProcessingState.idle;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bgColor = isDark ? const Color(0xFF1E1E1E) : const Color(0xFFFFFDF9);
+    final borderColor = isDark ? const Color(0xFF2E2E2E) : const Color(0xFFE8DDD0);
 
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFFFFFDF9),
-        border: Border(top: BorderSide(color: const Color(0xFFE8DDD0), width: 1)),
+        color: bgColor,
+        border: Border(top: BorderSide(color: borderColor, width: 1)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 8,
-            offset: const Offset(0, -2),
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
+            blurRadius: 12,
+            offset: const Offset(0, -3),
           ),
         ],
       ),
@@ -310,16 +320,38 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Status text
-              if (_statusText.isNotEmpty)
+              // Status row with waveform
+              if (_statusText.isNotEmpty || _isPlaying)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Text(
-                    _statusText,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFF6B6B6B),
-                    ),
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (_isPlaying) ...[
+                        WaveformAnimation(
+                          isPlaying: _isPlaying,
+                          color: const Color(0xFFD4A04A),
+                          height: 16,
+                          barCount: 4,
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                      if (_isSynthesizing) ...[
+                        const PulsingDot(color: Color(0xFFD4A04A), size: 6),
+                        const SizedBox(width: 6),
+                      ],
+                      if (_statusText.isNotEmpty)
+                        Text(
+                          _statusText,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: isDark
+                                ? const Color(0xFF9E9E9E)
+                                : const Color(0xFF6B6B6B),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
 
@@ -327,7 +359,7 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // Play/Pause
+                  // Play/Pause — larger and more prominent
                   _isSynthesizing
                       ? FilledButton.icon(
                           onPressed: null,
@@ -340,60 +372,97 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
                             ),
                           ),
                           label: const Text('ஒலிப்பதிவு...'),
+                          style: FilledButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 24, vertical: 14),
+                          ),
                         )
                       : FilledButton.icon(
-                          onPressed: _onPlayPause,
-                          icon: Icon(
-                            _isPlaying
-                                ? Icons.pause_rounded
-                                : Icons.play_arrow_rounded,
-                            size: 22,
+                          onPressed: () {
+                            HapticFeedback.mediumImpact();
+                            _onPlayPause();
+                          },
+                          icon: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 200),
+                            transitionBuilder: (child, anim) =>
+                                ScaleTransition(scale: anim, child: child),
+                            child: Icon(
+                              _isPlaying
+                                  ? Icons.pause_rounded
+                                  : Icons.play_arrow_rounded,
+                              key: ValueKey(_isPlaying),
+                              size: 24,
+                            ),
                           ),
                           label: Text(
                             _isPlaying ? 'நிறுத்து' : 'ஒலிக்கவும்',
                           ),
+                          style: FilledButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 24, vertical: 14),
+                          ),
                         ),
-                  if (_isPlaying) ...[
-                    const SizedBox(width: 10),
+                  if (_isPlaying || _isSynthesizing) ...[
+                    const SizedBox(width: 12),
                     IconButton.outlined(
-                      onPressed: _onStop,
-                      icon: const Icon(Icons.stop_rounded, size: 20),
+                      onPressed: () {
+                        HapticFeedback.lightImpact();
+                        _onStop();
+                      },
+                      icon: const Icon(Icons.stop_rounded, size: 22),
                       style: IconButton.styleFrom(
-                        side: const BorderSide(color: Color(0xFFE8DDD0)),
+                        side: BorderSide(color: borderColor),
+                        padding: const EdgeInsets.all(10),
                       ),
                     ),
                   ],
                 ],
               ),
 
-              // Speed chips
+              // Speed chips — more compact and elegant
               if (showSpeed)
                 Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.speed_rounded,
-                          size: 15,
-                          color: Color(0xFF9E9E9E)),
-                      const SizedBox(width: 6),
-                      for (final speed in _speedOptions)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 2),
-                          child: ChoiceChip(
-                            label: Text('${speed}x',
-                                style: const TextStyle(fontSize: 11)),
-                            selected: _playbackSpeed == speed,
-                            onSelected: (_) => _onSpeedChange(speed),
-                            visualDensity: VisualDensity.compact,
-                            padding: EdgeInsets.zero,
-                            labelPadding:
-                                const EdgeInsets.symmetric(horizontal: 6),
-                            materialTapTargetSize:
-                                MaterialTapTargetSize.shrinkWrap,
+                  padding: const EdgeInsets.only(top: 10),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.05)
+                          : const Color(0xFF1B4D3E).withValues(alpha: 0.04),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.speed_rounded,
+                            size: 14,
+                            color: isDark
+                                ? const Color(0xFF9E9E9E)
+                                : const Color(0xFF9E9E9E)),
+                        const SizedBox(width: 4),
+                        for (final speed in _speedOptions)
+                          Padding(
+                            padding:
+                                const EdgeInsets.symmetric(horizontal: 1),
+                            child: ChoiceChip(
+                              label: Text('${speed}x',
+                                  style: const TextStyle(fontSize: 11)),
+                              selected: _playbackSpeed == speed,
+                              onSelected: (_) {
+                                HapticFeedback.selectionClick();
+                                _onSpeedChange(speed);
+                              },
+                              visualDensity: VisualDensity.compact,
+                              padding: EdgeInsets.zero,
+                              labelPadding:
+                                  const EdgeInsets.symmetric(horizontal: 6),
+                              materialTapTargetSize:
+                                  MaterialTapTargetSize.shrinkWrap,
+                            ),
                           ),
-                        ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
             ],
@@ -419,6 +488,9 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
   }
 
   Future<void> _onPlayPauseInternal() async {
+    // Ensure audio session/player + cache + TTS are ready before first play.
+    await _initServices();
+
     if (_isPlaying) {
       await _audioPlayer.pause();
       return;
@@ -460,6 +532,20 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
       debugPrint('AudioCache: Hit for $hadithKey');
       setState(() => _statusText = 'தற்காலிக சேமிப்பிலிருந்து ஒலிக்கிறது...');
       await _audioPlayer.playFromFile(cachedPath);
+      if (mounted) setState(() => _statusText = '');
+
+      // Reset status when cached playback finishes
+      _audioPlayer.player.processingStateStream
+          .where((s) => s == ProcessingState.completed)
+          .first
+          .then((_) {
+        if (mounted) {
+          setState(() {
+            _statusText = '';
+            _isPlaying = false;
+          });
+        }
+      });
       return;
     }
 
@@ -478,7 +564,6 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
 
       bool firstChunk = true;
       int chunkCount = 0;
-      final List<Float32List> allChunks = []; // Collect for caching
 
       await for (final chunkAudio in ttsEngine.synthesizeStreaming(text)) {
         if (!mounted) {
@@ -489,7 +574,6 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
 
         chunkCount++;
         debugPrint('TTS: Chunk #$chunkCount received (${chunkAudio.length} samples, ${(chunkAudio.length / 16000).toStringAsFixed(2)}s)');
-        allChunks.add(chunkAudio);
         await _audioPlayer.addStreamingChunk(chunkAudio);
 
         if (firstChunk) {
@@ -521,30 +605,39 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
       // Signal: no more chunks coming — player will drain the queue
       _audioPlayer.finishStreaming();
 
-      // ── Save to cache in background ──
-      if (allChunks.isNotEmpty) {
-        // Concatenate all chunks into a single PCM buffer
-        final totalLen = allChunks.fold<int>(0, (sum, c) => sum + c.length);
-        final combined = Float32List(totalLen);
-        int offset = 0;
-        for (final chunk in allChunks) {
-          combined.setRange(offset, offset + chunk.length, chunk);
-          offset += chunk.length;
+      // ── Save to cache by stitching the already-written WAV chunks ──
+      // This avoids keeping all Float32 PCM chunks in RAM.
+      Future<String>? saveFuture;
+      try {
+        final chunkFiles = await _audioPlayer.listChunkFiles();
+        if (chunkFiles.isNotEmpty) {
+          saveFuture = audioCache.saveWavChunksToCacheByKey(hadithKey, chunkFiles);
+          saveFuture.then((_) {
+            debugPrint('AudioCache: Saved $hadithKey to cache (stitched)');
+          }).catchError((e) {
+            debugPrint('AudioCache: Failed to save $hadithKey (stitched): $e');
+          });
         }
-        // Memory protection: release chunk references immediately
-        allChunks.clear();
-
-        // Fire-and-forget: save to disk cache
-        audioCache.saveToCacheByKey(hadithKey, combined).then((_) {
-          debugPrint('AudioCache: Saved $hadithKey to cache');
-        }).catchError((e) {
-          debugPrint('AudioCache: Failed to save $hadithKey: $e');
-        });
+      } catch (e) {
+        debugPrint('AudioCache: chunk list failed for $hadithKey: $e');
       }
 
-      // ── Cleanup streaming chunk files after playback completes ──
+      // ── Reset UI when all chunks finish playing ──
       _audioPlayer.awaitStreamingComplete().then((_) {
-        _audioPlayer.cleanupChunks();
+        if (mounted) {
+          setState(() {
+            _statusText = '';
+            _isSynthesizing = false;
+          });
+        }
+      });
+
+      // ── Cleanup chunk files only after playback + cache-save are done ──
+      Future.wait([
+        _audioPlayer.awaitStreamingComplete(),
+        if (saveFuture != null) saveFuture,
+      ]).then((_) {
+        _audioPlayer.cleanupChunks(all: true);
       }).catchError((_) {});
     } catch (e) {
       debugPrint('TTS Error: $e');
@@ -561,7 +654,7 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
     try {
       ttsEngine.cancelSynthesis();
       await _audioPlayer.stop();
-      await _audioPlayer.cleanupChunks();
+      await _audioPlayer.cleanupChunks(all: true);
     } catch (e) {
       debugPrint('Stop error: $e');
     }
@@ -576,6 +669,9 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
   @override
   void dispose() {
     _playingSub?.cancel();
+    // Cancel any in-flight synthesis so the isolate doesn't keep working
+    // for a screen that's already gone.
+    ttsEngine.cancelSynthesis();
     super.dispose();
   }
 
@@ -585,6 +681,7 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
   }
 
   Future<void> _toggleBookmark() async {
+    HapticFeedback.mediumImpact();
     final hadith = widget.hadith;
     final nowBookmarked = await _bookmarkService.toggleBookmark(
       key: hadith.cacheKey,

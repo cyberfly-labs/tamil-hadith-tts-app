@@ -8,6 +8,8 @@
 #include <MNN/expr/MathOp.hpp>
 #include <MNN/MNNForwardType.h>
 
+#include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <memory>
 #include <mutex>
@@ -116,9 +118,8 @@ MNN_TTS_Engine* tts_create_engine(const char* model_path, int thread_count) {
 
     engine->module.reset(mod);
 
-    // ── Freeze scalar VARPs (created once, reused forever) ──
-    // Single-speaker Tamil TTS: these never change at runtime.
-    // length_scale 1.15 = slightly slower pace, ideal for hadith narration.
+    // ── Default scalar VARPs (used when caller passes the standard values) ──
+    // Creating _Const VARPs is cheap (~µs) but we cache the common case.
     float ns_init = 0.667f, ls_init = 1.15f, nsw_init = 0.8f;
     engine->frozen_ns  = _Const(&ns_init,  {1}, NCHW, halide_type_of<float>());
     engine->frozen_ls  = _Const(&ls_init,  {1}, NCHW, halide_type_of<float>());
@@ -194,14 +195,20 @@ TTS_ErrorCode tts_synthesize(
         int len_val = seq_len;
         VARP x_len = _Const(&len_val, {1}, NCHW, halide_type_of<int>());
 
-        // Frozen scalars — created once at engine init, zero cost here
-        // (noise_scale, length_scale, noise_scale_w params ignored;
-        //  single-speaker app always uses 0.667 / 1.0 / 0.8)
+        // Use frozen VARPs when params match defaults (common path);
+        // otherwise create fresh scalar VARPs (cheap, ~µs).
+        VARP ns_var  = (noise_scale   == 0.667f) ? engine->frozen_ns
+                     : _Const(&noise_scale,   {1}, NCHW, halide_type_of<float>());
+        VARP ls_var  = (length_scale  == 1.15f)  ? engine->frozen_ls
+                     : _Const(&length_scale,  {1}, NCHW, halide_type_of<float>());
+        VARP nsw_var = (noise_scale_w == 0.8f)   ? engine->frozen_nsw
+                     : _Const(&noise_scale_w, {1}, NCHW, halide_type_of<float>());
+
         engine->input_vars[0] = x;
         engine->input_vars[1] = x_len;
-        engine->input_vars[2] = engine->frozen_ns;
-        engine->input_vars[3] = engine->frozen_ls;
-        engine->input_vars[4] = engine->frozen_nsw;
+        engine->input_vars[2] = ns_var;
+        engine->input_vars[3] = ls_var;
+        engine->input_vars[4] = nsw_var;
 
         // Run inference — thread_local avoids heap alloc for output vector
         thread_local std::vector<VARP> outputs;
@@ -227,9 +234,44 @@ TTS_ErrorCode tts_synthesize(
             return TTS_ERROR_INFERENCE;
         }
 
-        // Copy into reusable engine buffer (no malloc/free per call)
+        // Copy into reusable engine buffer + find peak in one pass.
+        // Fused loop avoids a second scan over the data.
         engine->audio_buffer.resize(total_elements);
-        memcpy(engine->audio_buffer.data(), src, total_elements * sizeof(float));
+        float peak = 0.0f;
+        {
+            float* __restrict__ dst = engine->audio_buffer.data();
+            // Unrolled copy+peak for better pipelining on ARM/x86
+            size_t i = 0;
+            const size_t unroll4 = total_elements & ~size_t(3);
+            for (; i < unroll4; i += 4) {
+                float s0 = src[i],   s1 = src[i+1];
+                float s2 = src[i+2], s3 = src[i+3];
+                dst[i]   = s0; dst[i+1] = s1;
+                dst[i+2] = s2; dst[i+3] = s3;
+                float a0 = std::fabs(s0), a1 = std::fabs(s1);
+                float a2 = std::fabs(s2), a3 = std::fabs(s3);
+                float m01 = a0 > a1 ? a0 : a1;
+                float m23 = a2 > a3 ? a2 : a3;
+                float m   = m01 > m23 ? m01 : m23;
+                if (m > peak) peak = m;
+            }
+            for (; i < total_elements; i++) {
+                dst[i] = src[i];
+                float a = std::fabs(src[i]);
+                if (a > peak) peak = a;
+            }
+        }
+
+        // ── Peak-normalize: boost audio to target level ──
+        constexpr float target_peak = 0.92f;
+        constexpr float min_peak    = 0.01f;
+        if (peak > min_peak && peak < target_peak) {
+            const float gain = target_peak / peak;
+            float* __restrict__ dst = engine->audio_buffer.data();
+            for (size_t i = 0; i < total_elements; i++) {
+                dst[i] *= gain;
+            }
+        }
 
         *output_data = engine->audio_buffer.data();
         *output_len  = total_elements;

@@ -145,6 +145,161 @@ class AudioCacheService {
     }
   }
 
+  /// Save to cache by concatenating existing WAV chunk files.
+  ///
+  /// This is optimized for streaming playback: we already wrote each chunk
+  /// as a WAV for `just_audio`. Instead of holding all Float32 PCM in RAM
+  /// and re-encoding, we stitch the chunk WAVs into one final WAV.
+  ///
+  /// Assumes chunk WAVs are 16-bit PCM, mono, same [sampleRate].
+  Future<String> saveWavChunksToCacheByKey(
+    String key,
+    List<String> chunkWavPaths, {
+    int sampleRate = 16000,
+  }) async {
+    if (_writeLocks.containsKey(key)) {
+      return _writeLocks[key]!;
+    }
+
+    final future = _saveWavChunksInternal(key, chunkWavPaths, sampleRate);
+    _writeLocks[key] = future;
+
+    try {
+      return await future;
+    } finally {
+      _writeLocks.remove(key);
+    }
+  }
+
+  Future<String> _saveWavChunksInternal(
+    String key,
+    List<String> chunkWavPaths,
+    int sampleRate,
+  ) async {
+    await _ensureDir();
+    if (chunkWavPaths.isEmpty) {
+      throw ArgumentError('chunkWavPaths is empty');
+    }
+
+    final outPath = _cachePathByKey(key);
+    final tmpPath = '$outPath.tmp';
+
+    final outFile = File(tmpPath);
+    final raf = await outFile.open(mode: FileMode.write);
+
+    int dataBytes = 0;
+    try {
+      // Reserve header space
+      await raf.writeFrom(Uint8List(44));
+
+      for (final path in chunkWavPaths) {
+        final f = File(path);
+        if (!await f.exists()) continue;
+
+        final len = await f.length();
+        if (len <= 44) continue;
+
+        // Append everything after the 44-byte WAV header
+        final inRaf = await f.open(mode: FileMode.read);
+        try {
+          await inRaf.setPosition(44);
+          const int bufSize = 64 * 1024;
+          while (true) {
+            final chunk = await inRaf.read(bufSize);
+            if (chunk.isEmpty) break;
+            await raf.writeFrom(chunk);
+            dataBytes += chunk.length;
+          }
+        } finally {
+          await inRaf.close();
+        }
+      }
+
+      // Write final header
+      final header = _buildWavHeader(
+        sampleRate: sampleRate,
+        dataSizeBytes: dataBytes,
+      );
+      await raf.setPosition(0);
+      await raf.writeFrom(header);
+    } finally {
+      await raf.close();
+    }
+
+    // Atomic replace
+    final finalFile = File(outPath);
+    if (await finalFile.exists()) {
+      try {
+        await finalFile.delete();
+      } catch (_) {}
+    }
+    await outFile.rename(outPath);
+
+    debugPrint('AudioCache: Saved key=$key from ${chunkWavPaths.length} chunks '
+        '(${(dataBytes / (1024 * 1024)).toStringAsFixed(1)} MB)');
+
+    _enforceCacheLimit().catchError((e) {
+      debugPrint('AudioCache: eviction error: $e');
+    });
+
+    return outPath;
+  }
+
+  static Uint8List _buildWavHeader({
+    required int sampleRate,
+    required int dataSizeBytes,
+  }) {
+    const numChannels = 1;
+    const bitsPerSample = 16;
+    final byteRate = sampleRate * numChannels * bitsPerSample ~/ 8;
+    final blockAlign = numChannels * bitsPerSample ~/ 8;
+    final fileSize = 36 + dataSizeBytes;
+
+    final buffer = ByteData(44);
+    int offset = 0;
+
+    // RIFF
+    buffer.setUint8(offset++, 0x52);
+    buffer.setUint8(offset++, 0x49);
+    buffer.setUint8(offset++, 0x46);
+    buffer.setUint8(offset++, 0x46);
+    buffer.setUint32(offset, fileSize, Endian.little);
+    offset += 4;
+    buffer.setUint8(offset++, 0x57);
+    buffer.setUint8(offset++, 0x41);
+    buffer.setUint8(offset++, 0x56);
+    buffer.setUint8(offset++, 0x45);
+
+    // fmt
+    buffer.setUint8(offset++, 0x66);
+    buffer.setUint8(offset++, 0x6D);
+    buffer.setUint8(offset++, 0x74);
+    buffer.setUint8(offset++, 0x20);
+    buffer.setUint32(offset, 16, Endian.little);
+    offset += 4;
+    buffer.setUint16(offset, 1, Endian.little);
+    offset += 2;
+    buffer.setUint16(offset, numChannels, Endian.little);
+    offset += 2;
+    buffer.setUint32(offset, sampleRate, Endian.little);
+    offset += 4;
+    buffer.setUint32(offset, byteRate, Endian.little);
+    offset += 4;
+    buffer.setUint16(offset, blockAlign, Endian.little);
+    offset += 2;
+    buffer.setUint16(offset, bitsPerSample, Endian.little);
+    offset += 2;
+
+    // data
+    buffer.setUint8(offset++, 0x64);
+    buffer.setUint8(offset++, 0x61);
+    buffer.setUint8(offset++, 0x74);
+    buffer.setUint8(offset++, 0x61);
+    buffer.setUint32(offset, dataSizeBytes, Endian.little);
+
+    return buffer.buffer.asUint8List();
+  }
+
   Future<String> _saveInternalByKey(String key, Float32List pcmData, int sampleRate) async {
     await _ensureDir();
 
@@ -240,66 +395,53 @@ class AudioCacheService {
   }
 
   /// Convert PCM float32 to WAV byte array (16-bit, mono).
+  ///
+  /// Optimized: pre-built header template, branchless int16 conversion.
   static Uint8List pcmToWav(Float32List pcmData, int sampleRate) {
     const numChannels = 1;
     const bitsPerSample = 16;
     final numSamples = pcmData.length;
-    final byteRate = sampleRate * numChannels * bitsPerSample ~/ 8;
     final blockAlign = numChannels * bitsPerSample ~/ 8;
     final dataSize = numSamples * blockAlign;
     final fileSize = 36 + dataSize;
+    final byteRate = sampleRate * numChannels * bitsPerSample ~/ 8;
 
-    final buffer = ByteData(44);
-    int offset = 0;
+    // Build WAV header (44 bytes) directly into the result buffer
+    final result = Uint8List(44 + dataSize);
+    final hdr = ByteData.sublistView(result, 0, 44);
 
     // RIFF header
-    buffer.setUint8(offset++, 0x52); // 'R'
-    buffer.setUint8(offset++, 0x49); // 'I'
-    buffer.setUint8(offset++, 0x46); // 'F'
-    buffer.setUint8(offset++, 0x46); // 'F'
-    buffer.setUint32(offset, fileSize, Endian.little);
-    offset += 4;
-    buffer.setUint8(offset++, 0x57); // 'W'
-    buffer.setUint8(offset++, 0x41); // 'A'
-    buffer.setUint8(offset++, 0x56); // 'V'
-    buffer.setUint8(offset++, 0x45); // 'E'
+    result[0] = 0x52; result[1] = 0x49; result[2] = 0x46; result[3] = 0x46; // 'RIFF'
+    hdr.setUint32(4, fileSize, Endian.little);
+    result[8] = 0x57; result[9] = 0x41; result[10] = 0x56; result[11] = 0x45; // 'WAVE'
 
     // fmt chunk
-    buffer.setUint8(offset++, 0x66); // 'f'
-    buffer.setUint8(offset++, 0x6D); // 'm'
-    buffer.setUint8(offset++, 0x74); // 't'
-    buffer.setUint8(offset++, 0x20); // ' '
-    buffer.setUint32(offset, 16, Endian.little);
-    offset += 4;
-    buffer.setUint16(offset, 1, Endian.little); // PCM format
-    offset += 2;
-    buffer.setUint16(offset, numChannels, Endian.little);
-    offset += 2;
-    buffer.setUint32(offset, sampleRate, Endian.little);
-    offset += 4;
-    buffer.setUint32(offset, byteRate, Endian.little);
-    offset += 4;
-    buffer.setUint16(offset, blockAlign, Endian.little);
-    offset += 2;
-    buffer.setUint16(offset, bitsPerSample, Endian.little);
-    offset += 2;
+    result[12] = 0x66; result[13] = 0x6D; result[14] = 0x74; result[15] = 0x20; // 'fmt '
+    hdr.setUint32(16, 16, Endian.little);     // chunk size
+    hdr.setUint16(20, 1, Endian.little);      // PCM format
+    hdr.setUint16(22, numChannels, Endian.little);
+    hdr.setUint32(24, sampleRate, Endian.little);
+    hdr.setUint32(28, byteRate, Endian.little);
+    hdr.setUint16(32, blockAlign, Endian.little);
+    hdr.setUint16(34, bitsPerSample, Endian.little);
 
-    // data chunk
-    buffer.setUint8(offset++, 0x64); // 'd'
-    buffer.setUint8(offset++, 0x61); // 'a'
-    buffer.setUint8(offset++, 0x74); // 't'
-    buffer.setUint8(offset++, 0x61); // 'a'
-    buffer.setUint32(offset, dataSize, Endian.little);
+    // data chunk header
+    result[36] = 0x64; result[37] = 0x61; result[38] = 0x74; result[39] = 0x61; // 'data'
+    hdr.setUint32(40, dataSize, Endian.little);
 
-    // Vectorized float32 → int16 (avoid double-clamp on floats)
-    final samples = Int16List(numSamples);
+    // Float32 → Int16 conversion directly into the result buffer.
+    // Uses ByteData to write int16 values at the correct byte offsets.
+    // This avoids allocating a separate Int16List + Uint8List copy.
+    final bd = ByteData.sublistView(result, 44);
     for (int i = 0; i < numSamples; i++) {
-      samples[i] = (pcmData[i] * 32767).toInt().clamp(-32767, 32767);
+      // Branchless clamp: multiply, truncate to int, clamp range
+      final double scaled = pcmData[i] * 32767.0;
+      final int sample = scaled > 32767.0 ? 32767
+                       : scaled < -32767.0 ? -32767
+                       : scaled.toInt();
+      bd.setInt16(i * 2, sample, Endian.little);
     }
-    final sampleBytes = samples.buffer.asUint8List();
-    final result = Uint8List(44 + dataSize);
-    result.setRange(0, 44, buffer.buffer.asUint8List());
-    result.setRange(44, 44 + dataSize, sampleBytes);
+
     return result;
   }
 }

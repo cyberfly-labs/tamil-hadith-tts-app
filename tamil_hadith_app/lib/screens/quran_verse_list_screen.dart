@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../models/quran_verse.dart';
 import '../services/quran_database.dart';
+import '../widgets/animated_press_card.dart';
+import '../widgets/shimmer_loading.dart';
+import '../widgets/scroll_to_top_fab.dart';
 import 'quran_verse_detail_screen.dart';
 
 /// Screen showing list of verses for a specific sura
@@ -22,6 +25,7 @@ class QuranVerseListScreen extends StatefulWidget {
 class _QuranVerseListScreenState extends State<QuranVerseListScreen> {
   List<QuranVerse> _allVerses = []; // full sura loaded at once for playback
   bool _isLoading = true;
+  final ScrollController _scrollController = ScrollController();
 
   String get _suraName => SuraNames.getName(widget.suraNumber);
 
@@ -29,6 +33,12 @@ class _QuranVerseListScreenState extends State<QuranVerseListScreen> {
   void initState() {
     super.initState();
     _loadAll();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadAll() async {
@@ -109,15 +119,15 @@ class _QuranVerseListScreenState extends State<QuranVerseListScreen> {
         ),
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const SingleChildScrollView(child: SkeletonList(itemCount: 6))
           : ListView.separated(
+              controller: _scrollController,
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
               itemCount: _allVerses.length,
               separatorBuilder: (_, __) => const SizedBox(height: 8),
               itemBuilder: (context, index) {
                 final verse = _allVerses[index];
-                return _VerseCard(
-                  verse: verse,
+                return AnimatedPressCard(
                   onTap: () {
                     Navigator.push(
                       context,
@@ -129,9 +139,24 @@ class _QuranVerseListScreenState extends State<QuranVerseListScreen> {
                       ),
                     );
                   },
+                  child: _VerseCard(
+                    verse: verse,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => QuranVerseDetailScreen(
+                            verses: _allVerses,
+                            startIndex: index,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
                 );
               },
             ),
+      floatingActionButton: ScrollToTopFab(scrollController: _scrollController),
     );
   }
 }

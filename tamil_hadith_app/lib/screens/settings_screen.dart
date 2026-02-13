@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../services/model_download_service.dart';
 import '../screens/hadith_detail_screen.dart';
@@ -50,6 +51,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _selectModel(TtsModelVariant variant) async {
     if (variant == _selected) return;
+    HapticFeedback.selectionClick();
 
     // If not downloaded yet, download first
     if (_downloaded[variant] != true) {

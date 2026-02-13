@@ -62,6 +62,11 @@ enum TtsModelVariant {
 /// On first launch the small INT8 model (~28 MB) is downloaded.
 /// Users can switch to the higher-quality FP16+INT8 model from settings.
 class ModelDownloadService {
+  // ── Singleton ──
+  static final ModelDownloadService _instance = ModelDownloadService._();
+  factory ModelDownloadService() => _instance;
+  ModelDownloadService._();
+
   static const String _prefKey = 'selected_model';
 
   /// Partial download suffix — renamed to final name only after success.

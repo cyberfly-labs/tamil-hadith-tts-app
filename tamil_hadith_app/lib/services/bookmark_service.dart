@@ -3,12 +3,12 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 
-/// Manages hadith bookmarks in a local SQLite database.
+/// Manages hadith and quran bookmarks in a local SQLite database.
 ///
-/// Bookmarks are stored in a separate writable DB (not the read-only hadith DB).
+/// Bookmarks are stored in a separate writable DB (not the read-only hadith/quran DBs).
 /// Path: <documents>/bookmarks.db
 ///
-/// Key is `{collection}_{hadithNumber}` to uniquely identify across collections.
+/// Key is `{collection}_{number}` or `quran_{sura}_{aya}` to uniquely identify.
 class BookmarkService extends ChangeNotifier {
   Database? _db;
 
