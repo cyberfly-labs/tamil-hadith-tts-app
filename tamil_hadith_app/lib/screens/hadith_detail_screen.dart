@@ -531,21 +531,17 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
     if (cachedPath != null) {
       debugPrint('AudioCache: Hit for $hadithKey');
       setState(() => _statusText = 'தற்காலிக சேமிப்பிலிருந்து ஒலிக்கிறது...');
-      await _audioPlayer.playFromFile(cachedPath);
-      if (mounted) setState(() => _statusText = '');
-
-      // Reset status when cached playback finishes
-      _audioPlayer.player.processingStateStream
-          .where((s) => s == ProcessingState.completed)
-          .first
-          .then((_) {
-        if (mounted) {
-          setState(() {
-            _statusText = '';
-            _isPlaying = false;
-          });
-        }
-      });
+      // Use startPlayingFile (non-blocking) + awaitPlaybackComplete
+      // so the user can pause/stop during cached playback.
+      await _audioPlayer.startPlayingFile(cachedPath);
+      if (mounted) setState(() => _statusText = 'ஒலிக்கிறது...');
+      await _audioPlayer.awaitPlaybackComplete();
+      if (mounted) {
+        setState(() {
+          _statusText = '';
+          _isPlaying = false;
+        });
+      }
       return;
     }
 
@@ -658,6 +654,7 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
     } catch (e) {
       debugPrint('Stop error: $e');
     }
+    _currentlyLoadedHadith = null; // reset so next play does a fresh start
     if (mounted) {
       setState(() {
         _statusText = '';
@@ -672,6 +669,10 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
     // Cancel any in-flight synthesis so the isolate doesn't keep working
     // for a screen that's already gone.
     ttsEngine.cancelSynthesis();
+    // Stop the player to resolve any pending awaitPlaybackComplete() or
+    // awaitStreamingComplete() futures from _onPlayPauseInternal.
+    _audioPlayer.stop();
+    _currentlyLoadedHadith = null;
     super.dispose();
   }
 

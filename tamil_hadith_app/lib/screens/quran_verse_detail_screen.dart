@@ -120,6 +120,10 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
     // Cancel any in-flight synthesis so the isolate doesn't keep working
     // for a screen that's already gone.
     ttsEngine.cancelSynthesis();
+    // Stop the audio player to resolve any pending awaitPlaybackComplete()
+    // or awaitStreamingComplete() futures — prevents the _playSuraSequential
+    // loop from hanging after dispose.
+    _audioPlayer.stop();
     super.dispose();
   }
 
@@ -627,15 +631,20 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
   }
 
   /// Synthesize a verse and save to cache (used by prefetch).
+  /// Checks _cancelRequested before AND after synthesis to avoid
+  /// background work on a disposed/stopped screen.
   Future<void> _synthesizeToCache(QuranVerse verse) async {
+    if (_cancelRequested) return;
     try {
       final audio = await ttsEngine.synthesize(verse.text);
-      if (audio != null && !_cancelRequested) {
+      if (audio != null && !_cancelRequested && mounted) {
         await audioCache.saveToCacheByKey(verse.cacheKey, audio);
         debugPrint('SuraPlay: Prefetch done ${verse.sura}:${verse.aya}');
       }
     } catch (e) {
-      debugPrint('SuraPlay: Prefetch error ${verse.sura}:${verse.aya}: $e');
+      if (!_cancelRequested) {
+        debugPrint('SuraPlay: Prefetch error ${verse.sura}:${verse.aya}: $e');
+      }
     }
   }
 
@@ -683,7 +692,9 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
       // ── 3. Play from cache if available ──
       if (cachedPath != null) {
         debugPrint('SuraPlay: Cache hit for ${verse.sura}:${verse.aya}');
-        // Start playback without blocking so prefetch can run concurrently.
+        // Stop any stale streaming session before switching to file playback
+        // so the old _stateSub doesn't interfere.
+        await _audioPlayer.stop();
         await _audioPlayer.startPlayingFile(cachedPath);
         // Prefetch next verse while this one plays
         if (hasNext) _startPrefetch(nextIndex);
