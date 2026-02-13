@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../models/hadith.dart';
 import '../models/quran_verse.dart';
 import '../services/bookmark_service.dart';
 import '../services/hadith_database.dart';
@@ -359,7 +360,6 @@ class _BookmarkCard extends StatelessWidget {
                               color: const Color(0xFF1B4D3E),
                               borderRadius: BorderRadius.circular(4),
                             ),
-                            child: Text(
                             child: Text(
                               item is Hadith ? (item as Hadith).collection.shortName : 'குர்ஆன்',
                               style: const TextStyle(
