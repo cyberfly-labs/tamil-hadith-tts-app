@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:math';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -53,9 +52,10 @@ class TtsEngine {
       // Use whichever model the user has selected (persisted in prefs)
       final downloadService = ModelDownloadService();
       await downloadService.initialize();
+      final modelReady = await downloadService.isModelDownloaded;
       final path = await downloadService.modelPath;
 
-      if (!File(path).existsSync()) {
+      if (!modelReady || !File(path).existsSync()) {
         debugPrint('TTS: Model file not found at $path');
         _isInitialized = true;
         return;
@@ -65,15 +65,15 @@ class TtsEngine {
       // Copy tokens.txt from assets to documents so the isolate can read it
       final dir = await getApplicationDocumentsDirectory();
       final tokensPath = p.join(dir.path, 'models', 'tokens.txt');
-      if (!File(tokensPath).existsSync()) {
-        final data = await rootBundle.loadString('assets/models/tokens.txt');
-        await File(tokensPath).writeAsString(data, flush: true);
-      }
+      final data = await rootBundle.loadString('assets/models/tokens.txt');
+      await File(tokensPath).writeAsString(data, flush: true);
 
       // Spawn the background isolate and init the engine inside it
       final ready = await _runner.start(path, tokensPath);
-      debugPrint('TTS Engine initialized in background isolate '
-          '(native=${ready ? "yes" : "no"})');
+      debugPrint(
+        'TTS Engine initialized in background isolate '
+        '(native=${ready ? "yes" : "no"})',
+      );
 
       _isInitialized = true;
     } catch (e) {
@@ -94,7 +94,8 @@ class TtsEngine {
   /// thread is never blocked.
   ///
   /// Each emitted [Float32List] is a trimmed, crossfaded PCM chunk.
-  Stream<Float32List> synthesizeStreaming(String text, {
+  Stream<Float32List> synthesizeStreaming(
+    String text, {
     double noiseScale = VitsConfig.noiseScale,
     double lengthScale = VitsConfig.lengthScale,
     double noiseScaleW = VitsConfig.noiseScaleW,
@@ -117,7 +118,8 @@ class TtsEngine {
 
   /// Synthesize the full text and return a single combined PCM buffer.
   /// Still runs in the background isolate --- collects all chunks.
-  Future<Float32List?> synthesize(String text, {
+  Future<Float32List?> synthesize(
+    String text, {
     double noiseScale = VitsConfig.noiseScale,
     double lengthScale = VitsConfig.lengthScale,
     double noiseScaleW = VitsConfig.noiseScaleW,

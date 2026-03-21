@@ -9,9 +9,11 @@ import '../services/tts_engine.dart';
 import '../services/audio_player_service.dart';
 import '../services/audio_cache_service.dart';
 import '../widgets/waveform_animation.dart';
+import 'quran_tafsir_screen.dart';
 
 // Re-use the same shared singletons from hadith_detail_screen
-import 'hadith_detail_screen.dart' show sharedTtsEngine, sharedAudioCache, sharedAudioPlayer;
+import 'hadith_detail_screen.dart'
+    show sharedTtsEngine, sharedAudioCache, sharedAudioPlayer;
 
 /// Detail screen for Quran sura playback.
 /// Receives the full list of verses for a sura and a start index.
@@ -164,10 +166,7 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [
-                      const Color(0xFF1B4D3E),
-                      const Color(0xFF0D3020),
-                    ],
+                    colors: [const Color(0xFF1B4D3E), const Color(0xFF0D3020)],
                   ),
                 ),
                 child: SafeArea(
@@ -180,7 +179,9 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
                         children: [
                           Container(
                             height: 1,
-                            color: const Color(0xFFD4A04A).withValues(alpha: 0.3),
+                            color: const Color(
+                              0xFFD4A04A,
+                            ).withValues(alpha: 0.3),
                           ),
                           const SizedBox(height: 10),
                           Row(
@@ -205,10 +206,7 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
               ),
             ),
             actions: [
-              _BookmarkButton(
-                verse: _currentVerse,
-                service: BookmarkService(),
-              ),
+              _BookmarkButton(verse: _currentVerse, service: BookmarkService()),
               IconButton(
                 icon: const Icon(Icons.text_decrease_rounded),
                 onPressed: () =>
@@ -228,107 +226,146 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
             sliver: SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  final verse = widget.verses[index];
-                  final isActive = _isSuraPlaying && index == _currentVerseIndex;
+              delegate: SliverChildBuilderDelegate((context, index) {
+                final verse = widget.verses[index];
+                final isActive = _isSuraPlaying && index == _currentVerseIndex;
 
-                  return Padding(
-                    key: _verseKeys[index],
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 300),
-                      curve: Curves.easeInOut,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: isActive
-                              ? const Color(0xFFD4A04A)
-                              : const Color(0xFFE8DDD0),
-                          width: isActive ? 2 : 1,
-                        ),
+                return Padding(
+                  key: _verseKeys[index],
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeInOut,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
                         color: isActive
-                            ? const Color(0xFFD4A04A).withValues(alpha: 0.06)
-                            : const Color(0xFFFFFDF9),
-                        boxShadow: isActive ? [
-                          BoxShadow(
-                            color: const Color(0xFFD4A04A).withValues(alpha: 0.12),
-                            blurRadius: 12,
-                            offset: const Offset(0, 3),
+                            ? const Color(0xFFD4A04A)
+                            : const Color(0xFFE8DDD0),
+                        width: isActive ? 2 : 1,
+                      ),
+                      color: isActive
+                          ? const Color(0xFFD4A04A).withValues(alpha: 0.06)
+                          : const Color(0xFFFFFDF9),
+                      boxShadow: isActive
+                          ? [
+                              BoxShadow(
+                                color: const Color(
+                                  0xFFD4A04A,
+                                ).withValues(alpha: 0.12),
+                                blurRadius: 12,
+                                offset: const Offset(0, 3),
+                              ),
+                            ]
+                          : [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.02),
+                                blurRadius: 4,
+                                offset: const Offset(0, 1),
+                              ),
+                            ],
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Verse number badge
+                          Container(
+                            width: 42,
+                            height: 42,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  const Color(0xFF1B4D3E),
+                                  const Color(0xFF0D3020),
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: const Color(0xFFD4A04A),
+                                width: 1,
+                              ),
+                            ),
+                            child: Text(
+                              '${verse.aya}',
+                              style: const TextStyle(
+                                color: Color(0xFFD4A04A),
+                                fontWeight: FontWeight.w800,
+                                fontSize: 14,
+                              ),
+                            ),
                           ),
-                        ] : [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.02),
-                            blurRadius: 4,
-                            offset: const Offset(0, 1),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                SelectableText(
+                                  verse.text,
+                                  style: TextStyle(
+                                    fontSize: _fontSize,
+                                    height: 1.85,
+                                    color: const Color(0xFF1A1A1A),
+                                    letterSpacing: 0.1,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                if (verse.tafsir.trim().isNotEmpty) ...[
+                                  const SizedBox(height: 10),
+                                  Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: OutlinedButton.icon(
+                                      onPressed: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) =>
+                                                QuranTafsirScreen(verse: verse),
+                                          ),
+                                        );
+                                      },
+                                      icon: const Icon(
+                                        Icons.menu_book_outlined,
+                                        size: 16,
+                                      ),
+                                      label: const Text('தஃப்ஸீர்'),
+                                      style: OutlinedButton.styleFrom(
+                                        visualDensity: VisualDensity.compact,
+                                        foregroundColor: const Color(
+                                          0xFF1B4D3E,
+                                        ),
+                                        side: BorderSide(
+                                          color: const Color(
+                                            0xFFD4A04A,
+                                          ).withValues(alpha: 0.6),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
                           ),
+                          if (isActive)
+                            Padding(
+                              padding: const EdgeInsets.only(left: 4, top: 8),
+                              child: WaveformAnimation(
+                                isPlaying: _isPlaying && isActive,
+                                color: const Color(0xFFD4A04A),
+                                height: 18,
+                                barCount: 4,
+                              ),
+                            ),
                         ],
                       ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Verse number badge
-                            Container(
-                              width: 42,
-                              height: 42,
-                              alignment: Alignment.center,
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                  colors: [
-                                    const Color(0xFF1B4D3E),
-                                    const Color(0xFF0D3020),
-                                  ],
-                                ),
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(
-                                  color: const Color(0xFFD4A04A),
-                                  width: 1,
-                                ),
-                              ),
-                              child: Text(
-                                '${verse.aya}',
-                                style: const TextStyle(
-                                  color: Color(0xFFD4A04A),
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 14,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: SelectableText(
-                                verse.text,
-                                style: TextStyle(
-                                  fontSize: _fontSize,
-                                  height: 1.85,
-                                  color: const Color(0xFF1A1A1A),
-                                  letterSpacing: 0.1,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ),
-                            if (isActive)
-                              Padding(
-                                padding: const EdgeInsets.only(left: 4, top: 8),
-                                child: WaveformAnimation(
-                                  isPlaying: _isPlaying && isActive,
-                                  color: const Color(0xFFD4A04A),
-                                  height: 18,
-                                  barCount: 4,
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
                     ),
-                  );
-                },
-                childCount: totalVerses,
-              ),
+                  ),
+                );
+              }, childCount: totalVerses),
             ),
           ),
         ],
@@ -340,11 +377,14 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
   }
 
   Widget _buildPlaybackBar(BuildContext context) {
-    final showSpeed = _isPlaying ||
+    final showSpeed =
+        _isPlaying ||
         _audioPlayer.player.processingState != ProcessingState.idle;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bgColor = isDark ? const Color(0xFF1E1E1E) : const Color(0xFFFFFDF9);
-    final borderColor = isDark ? const Color(0xFF2E2E2E) : const Color(0xFFE8DDD0);
+    final borderColor = isDark
+        ? const Color(0xFF2E2E2E)
+        : const Color(0xFFE8DDD0);
 
     return Container(
       decoration: BoxDecoration(
@@ -439,7 +479,9 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
                           ),
                           style: FilledButton.styleFrom(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 20, vertical: 14),
+                              horizontal: 20,
+                              vertical: 14,
+                            ),
                           ),
                         )
                       : FilledButton.icon(
@@ -463,12 +505,14 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
                             _isPlaying
                                 ? 'வசனம் ${_currentVerse.aya}/${widget.verses.length}'
                                 : (_isSuraPlaying
-                                    ? 'தொடர்'
-                                    : 'சூரா ஒலிக்கவும்'),
+                                      ? 'தொடர்'
+                                      : 'சூரா ஒலிக்கவும்'),
                           ),
                           style: FilledButton.styleFrom(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 20, vertical: 14),
+                              horizontal: 20,
+                              vertical: 14,
+                            ),
                           ),
                         ),
 
@@ -491,13 +535,12 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
                   if (_isSuraPlaying) const SizedBox(width: 8),
                   if (_isSuraPlaying)
                     IconButton.outlined(
-                      onPressed:
-                          _currentVerseIndex < widget.verses.length - 1
-                              ? () {
-                                  HapticFeedback.lightImpact();
-                                  _skipToVerse(_currentVerseIndex + 1);
-                                }
-                              : null,
+                      onPressed: _currentVerseIndex < widget.verses.length - 1
+                          ? () {
+                              HapticFeedback.lightImpact();
+                              _skipToVerse(_currentVerseIndex + 1);
+                            }
+                          : null,
                       icon: const Icon(Icons.skip_next_rounded, size: 20),
                       style: IconButton.styleFrom(
                         side: BorderSide(color: borderColor),
@@ -512,7 +555,9 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
                   padding: const EdgeInsets.only(top: 10),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 4),
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: isDark
                           ? Colors.white.withValues(alpha: 0.05)
@@ -522,17 +567,20 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.speed_rounded,
-                            size: 14,
-                            color: Color(0xFF9E9E9E)),
+                        const Icon(
+                          Icons.speed_rounded,
+                          size: 14,
+                          color: Color(0xFF9E9E9E),
+                        ),
                         const SizedBox(width: 4),
                         for (final speed in _speedOptions)
                           Padding(
-                            padding:
-                                const EdgeInsets.symmetric(horizontal: 1),
+                            padding: const EdgeInsets.symmetric(horizontal: 1),
                             child: ChoiceChip(
-                              label: Text('${speed}x',
-                                  style: const TextStyle(fontSize: 11)),
+                              label: Text(
+                                '${speed}x',
+                                style: const TextStyle(fontSize: 11),
+                              ),
                               selected: _playbackSpeed == speed,
                               onSelected: (_) {
                                 HapticFeedback.selectionClick();
@@ -540,8 +588,9 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
                               },
                               visualDensity: VisualDensity.compact,
                               padding: EdgeInsets.zero,
-                              labelPadding:
-                                  const EdgeInsets.symmetric(horizontal: 6),
+                              labelPadding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                              ),
                               materialTapTargetSize:
                                   MaterialTapTargetSize.shrinkWrap,
                             ),
@@ -596,8 +645,9 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: const Text(
-                'தமிழ் ஒலி மாதிரி பதிவிறக்கம் செய்யப்படவில்லை.\n'
-                'முகப்புப் பக்கத்திலிருந்து பதிவிறக்கவும்.'),
+              'தமிழ் ஒலி மாதிரி பதிவிறக்கம் செய்யப்படவில்லை.\n'
+              'முகப்புப் பக்கத்திலிருந்து பதிவிறக்கவும்.',
+            ),
             duration: const Duration(seconds: 3),
             behavior: SnackBarBehavior.floating,
           ),
@@ -620,7 +670,9 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
     for (int i = fromIndex; i < widget.verses.length; i++) {
       final verse = widget.verses[i];
       final key = verse.cacheKey;
-      if (audioCache.getCachedPathByKey(key) != null) continue; // already cached
+      if (audioCache.getCachedPathByKey(key) != null) {
+        continue; // already cached
+      }
       if (_prefetchCacheKey == key) return; // already prefetching this one
 
       debugPrint('SuraPlay: Prefetching verse ${verse.sura}:${verse.aya}');
@@ -711,7 +763,8 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
       try {
         final text = verse.text;
         debugPrint(
-            'SuraPlay: Synthesizing ${verse.sura}:${verse.aya} (${text.length} chars)');
+          'SuraPlay: Synthesizing ${verse.sura}:${verse.aya} (${text.length} chars)',
+        );
 
         await _audioPlayer.startStreaming();
 
@@ -755,7 +808,10 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
         try {
           final chunkFiles = await _audioPlayer.listChunkFiles();
           if (chunkFiles.isNotEmpty) {
-            saveFuture = audioCache.saveWavChunksToCacheByKey(cacheKey, chunkFiles);
+            saveFuture = audioCache.saveWavChunksToCacheByKey(
+              cacheKey,
+              chunkFiles,
+            );
             saveFuture.catchError((e) {
               debugPrint('AudioCache: Failed to save $cacheKey (stitched): $e');
               return '';
@@ -839,7 +895,8 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
         _statusText = '';
         _isSynthesizing = false;
         _isSuraPlaying = false;
-        _currentVerseIndex = widget.startIndex; // reset so next play starts from beginning
+        _currentVerseIndex =
+            widget.startIndex; // reset so next play starts from beginning
       });
     }
   }
@@ -865,7 +922,9 @@ class _BookmarkButton extends StatelessWidget {
         final isBookmarked = service.isBookmarked(verse.cacheKey);
         return IconButton(
           icon: Icon(
-            isBookmarked ? Icons.bookmark_rounded : Icons.bookmark_outline_rounded,
+            isBookmarked
+                ? Icons.bookmark_rounded
+                : Icons.bookmark_outline_rounded,
             color: isBookmarked ? const Color(0xFFD4A04A) : null,
           ),
           onPressed: () async {

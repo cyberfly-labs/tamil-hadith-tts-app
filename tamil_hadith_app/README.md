@@ -87,7 +87,7 @@ native/
     ├── mnn_tts.cpp                # C++ VITS inference via MNN
     └── mnn_tts.h
 3rd_party/
-└── MNN/                           # MNN inference framework
+└── MNN/                           # Vendored MNN headers/schema for Android linking
 assets/
 ├── db/
 │   ├── hadith.db                  # Bukhari + Muslim hadiths
@@ -111,6 +111,8 @@ flutter run
 ```
 
 On first launch, the app will prompt to download the TTS model (~28–55 MB). After that, everything works offline.
+
+Android native inference links against vendored prebuilt MNN 3.4.1 libraries, so the build does not compile MNN from source.
 
 ## Data Sources
 

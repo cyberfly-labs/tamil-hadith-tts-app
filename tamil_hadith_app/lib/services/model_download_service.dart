@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -18,7 +19,9 @@ enum TtsModelVariant {
     label: 'சிறிய (INT8)',
     description: 'வேகமான, குறைந்த அளவு',
     sizeMB: 28,
-    url: 'https://huggingface.co/developerabu/mms-tts-tam-mnn/resolve/main/model_int8.mnn',
+    sha256: '435d49e8861e38fd4c633e12e36d87116f5cd90a5ae8d5e1b8b81ce0e3d389ec',
+    url:
+        'https://huggingface.co/developerabu/mms-tts-tam-mnn/resolve/main/model_int8.mnn',
   ),
 
   /// FP16+INT8 hybrid — balanced quality / size.
@@ -27,7 +30,9 @@ enum TtsModelVariant {
     label: 'நடுத்தர (FP16+INT8)',
     description: 'சிறந்த தரம், நடுத்தர அளவு',
     sizeMB: 55,
-    url: 'https://huggingface.co/developerabu/mms-tts-tam-mnn/resolve/main/model_fp16_int8.mnn',
+    sha256: '98f86c685357d918b47364080135e980d7feed40125d809acdd24a445248b479',
+    url:
+        'https://huggingface.co/developerabu/mms-tts-tam-mnn/resolve/main/model_fp16_int8.mnn',
   );
 
   const TtsModelVariant({
@@ -35,6 +40,7 @@ enum TtsModelVariant {
     required this.label,
     required this.description,
     required this.sizeMB,
+    required this.sha256,
     required this.url,
   });
 
@@ -42,6 +48,7 @@ enum TtsModelVariant {
   final String label;
   final String description;
   final int sizeMB;
+  final String sha256;
   final String url;
 
   /// Look up a variant by its file name, fallback to [int8].
@@ -59,8 +66,8 @@ enum TtsModelVariant {
 
 /// Downloads and caches MNN TTS models from HuggingFace.
 ///
-/// On first launch the small INT8 model (~28 MB) is downloaded.
-/// Users can switch to the higher-quality FP16+INT8 model from settings.
+/// On first launch the fast INT8 model (~28 MB) is downloaded.
+/// Users can still switch to the larger FP16+INT8 model from settings.
 class ModelDownloadService {
   // ── Singleton ──
   static final ModelDownloadService _instance = ModelDownloadService._();
@@ -68,6 +75,8 @@ class ModelDownloadService {
   ModelDownloadService._();
 
   static const String _prefKey = 'selected_model';
+  static const String _migrationKey = 'selected_model_default_v3';
+  static const String _legacyBalancedMigrationKey = 'selected_model_default_v2';
 
   /// Partial download suffix — renamed to final name only after success.
   static const String _partialSuffix = '.part';
@@ -86,8 +95,24 @@ class ModelDownloadService {
 
     final prefs = await SharedPreferences.getInstance();
     final stored = prefs.getString(_prefKey);
-    if (stored != null) {
+    if (stored == null) {
+      _selected = TtsModelVariant.int8;
+    } else {
       _selected = TtsModelVariant.fromFileName(stored);
+    }
+
+    // Restore INT8 as the app default. Earlier builds auto-migrated users
+    // to FP16+INT8; move those legacy defaults back to INT8 once.
+    final migrated = prefs.getBool(_migrationKey) ?? false;
+    final legacyBalancedDefault =
+        prefs.getBool(_legacyBalancedMigrationKey) ?? false;
+    if (!migrated) {
+      if (stored == null ||
+          (legacyBalancedDefault && _selected == TtsModelVariant.fp16Int8)) {
+        _selected = TtsModelVariant.int8;
+        await prefs.setString(_prefKey, _selected.fileName);
+      }
+      await prefs.setBool(_migrationKey, true);
     }
   }
 
@@ -116,8 +141,7 @@ class ModelDownloadService {
   }
 
   /// Whether the currently-selected model has been downloaded.
-  Future<bool> get isModelDownloaded async =>
-      isVariantDownloaded(_selected);
+  Future<bool> get isModelDownloaded async => isVariantDownloaded(_selected);
 
   /// Whether a specific variant has been downloaded.
   Future<bool> isVariantDownloaded(TtsModelVariant variant) async {
@@ -125,7 +149,22 @@ class ModelDownloadService {
     final file = File(p.join(_modelsDir!, variant.fileName));
     if (!await file.exists()) return false;
     final size = await file.length();
-    return size > 5 * 1024 * 1024; // at least 5 MB
+    if (size <= 5 * 1024 * 1024) return false; // at least 5 MB
+
+    final actualHash = await _hashFile(file);
+    final matches = actualHash == variant.sha256;
+    if (!matches) {
+      debugPrint(
+        'ModelDownload: Hash mismatch for ${variant.fileName} '
+        '(expected ${variant.sha256}, got $actualHash)',
+      );
+    }
+    return matches;
+  }
+
+  Future<String> _hashFile(File file) async {
+    final digest = await sha256.bind(file.openRead()).first;
+    return digest.toString();
   }
 
   /// Download a specific model variant with progress reporting.
@@ -143,10 +182,15 @@ class ModelDownloadService {
 
     // Already downloaded — skip
     final finalFile = File(finalPath);
-    if (await finalFile.exists() && await finalFile.length() > 5 * 1024 * 1024) {
-      debugPrint('ModelDownload: ${v.fileName} already exists');
-      onProgress?.call(1, 1);
-      return finalPath;
+    if (await finalFile.exists()) {
+      final isValid = await isVariantDownloaded(v);
+      if (isValid) {
+        debugPrint('ModelDownload: ${v.fileName} already exists');
+        onProgress?.call(1, 1);
+        return finalPath;
+      }
+      debugPrint('ModelDownload: Removing invalid cached ${v.fileName}');
+      await finalFile.delete();
     }
 
     // Clean up any previous partial download
@@ -155,7 +199,9 @@ class ModelDownloadService {
       await partialFile.delete();
     }
 
-    debugPrint('ModelDownload: Starting download of ${v.fileName} from ${v.url}');
+    debugPrint(
+      'ModelDownload: Starting download of ${v.fileName} from ${v.url}',
+    );
     final stopwatch = Stopwatch()..start();
 
     final client = HttpClient();
@@ -190,8 +236,17 @@ class ModelDownloadService {
       if (downloadedSize < 5 * 1024 * 1024) {
         await partialFile.delete();
         throw Exception(
-          'Downloaded file too small (${downloadedSize} bytes). '
+          'Downloaded file too small ($downloadedSize bytes). '
           'Expected ~${v.sizeMB} MB.',
+        );
+      }
+
+      final actualHash = await _hashFile(partialFile);
+      if (actualHash != v.sha256) {
+        await partialFile.delete();
+        throw Exception(
+          'Downloaded file hash mismatch for ${v.fileName}. '
+          'Expected ${v.sha256}, got $actualHash.',
         );
       }
 
@@ -201,8 +256,10 @@ class ModelDownloadService {
       stopwatch.stop();
       final sizeMB = (downloadedSize / (1024 * 1024)).toStringAsFixed(1);
       final seconds = stopwatch.elapsedMilliseconds / 1000;
-      debugPrint('ModelDownload: ${v.fileName} complete — '
-          '$sizeMB MB in ${seconds.toStringAsFixed(1)}s');
+      debugPrint(
+        'ModelDownload: ${v.fileName} complete — '
+        '$sizeMB MB in ${seconds.toStringAsFixed(1)}s',
+      );
 
       return finalPath;
     } finally {
@@ -215,7 +272,9 @@ class ModelDownloadService {
     await _ensureDir();
     final file = File(p.join(_modelsDir!, variant.fileName));
     if (await file.exists()) await file.delete();
-    final partial = File(p.join(_modelsDir!, '${variant.fileName}$_partialSuffix'));
+    final partial = File(
+      p.join(_modelsDir!, '${variant.fileName}$_partialSuffix'),
+    );
     if (await partial.exists()) await partial.delete();
     debugPrint('ModelDownload: ${variant.fileName} deleted');
   }

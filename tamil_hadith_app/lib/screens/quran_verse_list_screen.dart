@@ -5,6 +5,7 @@ import '../services/quran_database.dart';
 import '../widgets/animated_press_card.dart';
 import '../widgets/shimmer_loading.dart';
 import '../widgets/scroll_to_top_fab.dart';
+import 'quran_tafsir_screen.dart';
 import 'quran_verse_detail_screen.dart';
 
 /// Screen showing list of verses for a specific sura
@@ -81,10 +82,7 @@ class _QuranVerseListScreenState extends State<QuranVerseListScreen> {
           child: Container(
             decoration: const BoxDecoration(
               border: Border(
-                top: BorderSide(
-                  color: Color(0xFFD4A04A),
-                  width: 1,
-                ),
+                top: BorderSide(color: Color(0xFFD4A04A), width: 1),
               ),
             ),
             child: Padding(
@@ -92,8 +90,10 @@ class _QuranVerseListScreenState extends State<QuranVerseListScreen> {
               child: Row(
                 children: [
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFFD4A04A).withValues(alpha: 0.1),
                       border: Border.all(
@@ -124,7 +124,7 @@ class _QuranVerseListScreenState extends State<QuranVerseListScreen> {
               controller: _scrollController,
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
               itemCount: _allVerses.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 8),
+              separatorBuilder: (context, index) => const SizedBox(height: 8),
               itemBuilder: (context, index) {
                 final verse = _allVerses[index];
                 return AnimatedPressCard(
@@ -178,10 +178,7 @@ class _VerseCard extends StatelessWidget {
           decoration: BoxDecoration(
             color: const Color(0xFFFFFDF9),
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: const Color(0xFFE8DDD0),
-              width: 1,
-            ),
+            border: Border.all(color: const Color(0xFFE8DDD0), width: 1),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.025),
@@ -204,10 +201,7 @@ class _VerseCard extends StatelessWidget {
                     gradient: const LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
-                      colors: [
-                        Color(0xFF1B4D3E),
-                        Color(0xFF0D3020),
-                      ],
+                      colors: [Color(0xFF1B4D3E), Color(0xFF0D3020)],
                     ),
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
@@ -241,19 +235,85 @@ class _VerseCard extends StatelessWidget {
                         maxLines: 3,
                         overflow: TextOverflow.ellipsis,
                       ),
+                      if (verse.tafsirPreview.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(
+                              0xFF1B4D3E,
+                            ).withValues(alpha: 0.05),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: const Color(
+                                0xFFD4A04A,
+                              ).withValues(alpha: 0.25),
+                            ),
+                          ),
+                          child: Text(
+                            verse.tafsirPreview,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              height: 1.5,
+                              color: Color(0xFF24483C),
+                            ),
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: OutlinedButton.icon(
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      QuranTafsirScreen(verse: verse),
+                                ),
+                              );
+                            },
+                            icon: const Icon(
+                              Icons.menu_book_outlined,
+                              size: 14,
+                            ),
+                            label: const Text('தஃப்ஸீர்'),
+                            style: OutlinedButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                              foregroundColor: const Color(0xFF1B4D3E),
+                              side: BorderSide(
+                                color: const Color(
+                                  0xFFD4A04A,
+                                ).withValues(alpha: 0.6),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 8),
                       Row(
                         children: [
-                          Icon(Icons.graphic_eq_rounded,
-                              size: 13,
-                              color: const Color(0xFF1B4D3E).withValues(alpha: 0.5)),
+                          Icon(
+                            Icons.graphic_eq_rounded,
+                            size: 13,
+                            color: const Color(
+                              0xFF1B4D3E,
+                            ).withValues(alpha: 0.5),
+                          ),
                           const SizedBox(width: 4),
                           Text(
                             'AI ஒலி',
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w600,
-                              color: const Color(0xFF1B4D3E).withValues(alpha: 0.6),
+                              color: const Color(
+                                0xFF1B4D3E,
+                              ).withValues(alpha: 0.6),
                             ),
                           ),
                         ],
@@ -264,9 +324,11 @@ class _VerseCard extends StatelessWidget {
                 const SizedBox(width: 4),
                 Padding(
                   padding: const EdgeInsets.only(top: 10),
-                  child: const Icon(Icons.chevron_right_rounded,
-                      size: 20, 
-                      color: Color(0xFFD4A04A)),
+                  child: const Icon(
+                    Icons.chevron_right_rounded,
+                    size: 20,
+                    color: Color(0xFFD4A04A),
+                  ),
                 ),
               ],
             ),

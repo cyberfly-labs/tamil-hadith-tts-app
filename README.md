@@ -26,7 +26,7 @@ tamil-hadith-audio/
 │   │   ├── screens/         # UI screens (9 screens)
 │   │   ├── services/        # TTS engine, tokenizer, DB, audio, settings
 │   │   └── widgets/
-│   └── 3rd_party/MNN/       # MNN source (built from source for Android)
+│   └── 3rd_party/MNN/       # Vendored MNN headers/schema for Android linking
 └── utils/
 ```
 
@@ -79,7 +79,7 @@ flutter pub get
 flutter run --debug
 ```
 
-> The first build will compile MNN from source via CMake — this takes a few minutes.
+> Android links against vendored prebuilt MNN 3.4.1 libraries, so the first build no longer recompiles MNN.
 
 **Release build:**
 
@@ -153,11 +153,11 @@ flutter run -d <device-id>
 
 ## Native Build (MNN)
 
-The native TTS wrapper is built automatically by the Flutter/Gradle CMake integration. MNN is compiled from source under `3rd_party/MNN/` with these options:
+The native TTS wrapper is built automatically by the Flutter/Gradle CMake integration. Android links against vendored prebuilt MNN 3.4.1 shared libraries in `android/app/src/main/jniLibs/`, with matching headers checked into `3rd_party/MNN/`.
 
-- CPU-only (no OpenCL/Vulkan)
-- ARM FP16 enabled (`MNN_ARM82`)
-- Shared library (`libmnn_tts.so`)
+- Prebuilt libraries: `libMNN.so`, `libMNN_Express.so`
+- Included ABIs: `arm64-v8a`, `armeabi-v7a`
+- Wrapper output: `libmnn_tts.so`
 
 No manual native build step is needed — `flutter run` handles everything.
 

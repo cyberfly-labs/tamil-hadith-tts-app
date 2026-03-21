@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../models/hadith.dart';
 import '../services/hadith_database.dart';
 import '../services/quran_database.dart';
+import '../theme.dart';
 import '../widgets/animated_press_card.dart';
 import '../widgets/shimmer_loading.dart';
 import '../widgets/scroll_to_top_fab.dart';
@@ -33,6 +34,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     final bodies = [
       QuranSuraListScreen(
         database: widget.quranDatabase,
@@ -46,45 +49,45 @@ class _HomeScreenState extends State<HomeScreen> {
         index: _currentTab,
         children: bodies,
       ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: Theme.of(context).brightness == Brightness.dark
-              ? const Color(0xFF1E1E1E)
-              : const Color(0xFFFFFDF9),
-          border: Border(
-            top: BorderSide(
-              color: Theme.of(context).brightness == Brightness.dark
-                  ? const Color(0xFF2E2E2E)
-                  : const Color(0xFFE8DDD0),
-              width: 1,
+      bottomNavigationBar: SafeArea(
+        minimum: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+        child: Container(
+          decoration: BoxDecoration(
+            color: isDark ? AppTheme.darkCard : AppTheme.surface,
+            borderRadius: BorderRadius.circular(26),
+            border: Border.all(
+              color: isDark ? AppTheme.darkBorder : AppTheme.warmBorder,
             ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.22 : 0.08),
+                blurRadius: 24,
+                offset: const Offset(0, 8),
+              ),
+            ],
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
-              blurRadius: 12,
-              offset: const Offset(0, -3),
-            ),
-          ],
-        ),
-        child: NavigationBar(
-          selectedIndex: _currentTab,
-          onDestinationSelected: (i) {
-            HapticFeedback.selectionClick();
-            setState(() => _currentTab = i);
-          },
-          destinations: const [
-            NavigationDestination(
-              icon: Icon(Icons.menu_book_outlined),
-              selectedIcon: Icon(Icons.menu_book_rounded),
-              label: 'குர்ஆன்',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.auto_stories_outlined),
-              selectedIcon: Icon(Icons.auto_stories_rounded),
-              label: 'ஹதீஸ்',
-            ),
-          ],
+          child: NavigationBar(
+            backgroundColor: Colors.transparent,
+            surfaceTintColor: Colors.transparent,
+            labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+            selectedIndex: _currentTab,
+            onDestinationSelected: (i) {
+              HapticFeedback.selectionClick();
+              setState(() => _currentTab = i);
+            },
+            destinations: const [
+              NavigationDestination(
+                icon: Icon(Icons.menu_book_outlined),
+                selectedIcon: Icon(Icons.menu_book_rounded),
+                label: 'குர்ஆன்',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.auto_stories_outlined),
+                selectedIcon: Icon(Icons.auto_stories_rounded),
+                label: 'ஹதீஸ்',
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -156,6 +159,12 @@ class _HadithHomeBodyState extends State<_HadithHomeBody>
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final headerBg = isDark ? AppTheme.darkCard : AppTheme.surface;
+    final borderColor = isDark ? AppTheme.darkBorder : AppTheme.warmBorder;
+    final secondaryText = isDark ? AppTheme.darkSubtle : AppTheme.subtleText;
+
     if (_isLoading) {
       return Scaffold(
         body: CustomScrollView(
@@ -363,29 +372,56 @@ class _HadithHomeBodyState extends State<_HadithHomeBody>
                   padding: const EdgeInsets.symmetric(
                       horizontal: 16, vertical: 14),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFFFDF9),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: const Color(0xFFE8DDD0)),
+                    color: headerBg,
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: borderColor),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.03),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
+                        color: Colors.black.withValues(alpha: isDark ? 0.14 : 0.03),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
                       ),
                     ],
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.search_rounded,
-                          color: const Color(0xFF6B6B6B),
-                          size: 22),
-                      const SizedBox(width: 12),
-                      Text(
-                        'ஹதீஸ் தேடுங்கள்...',
-                        style: TextStyle(
-                          color: const Color(0xFF9E9E9E),
-                          fontSize: 15,
+                      Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(10),
                         ),
+                        child: Icon(
+                          Icons.search_rounded,
+                          color: theme.colorScheme.primary,
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'ஹதீஸ் தேடுங்கள்',
+                              style: theme.textTheme.titleMedium,
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'உரை அல்லது ஹதீஸ் எண்ணைப் பயன்படுத்தலாம்',
+                              style: TextStyle(
+                                color: secondaryText,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(
+                        Icons.arrow_forward_rounded,
+                        color: theme.colorScheme.primary,
                       ),
                     ],
                   ),
@@ -403,7 +439,7 @@ class _HadithHomeBodyState extends State<_HadithHomeBody>
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
-                  color: const Color(0xFF1B4D3E),
+                  color: theme.colorScheme.primary,
                   letterSpacing: 0.5,
                 ),
               ),
@@ -490,6 +526,8 @@ class _BookIndexCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -497,14 +535,17 @@ class _BookIndexCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         child: Container(
           decoration: BoxDecoration(
-            color: const Color(0xFFFFFDF9),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFFE8DDD0), width: 1),
+            color: isDark ? AppTheme.darkCard : AppTheme.surface,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: isDark ? AppTheme.darkBorder : AppTheme.warmBorder,
+              width: 1,
+            ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.025),
-                blurRadius: 6,
-                offset: const Offset(0, 2),
+                color: Colors.black.withValues(alpha: isDark ? 0.16 : 0.03),
+                blurRadius: 14,
+                offset: const Offset(0, 4),
               ),
             ],
           ),
@@ -534,8 +575,8 @@ class _BookIndexCard extends StatelessWidget {
                   ),
                   child: Text(
                     '$index',
-                    style: const TextStyle(
-                      color: Color(0xFFD4A04A),
+                    style: TextStyle(
+                      color: isDark ? AppTheme.darkGold : AppTheme.gold,
                       fontWeight: FontWeight.w800,
                       fontSize: 16,
                     ),
@@ -548,27 +589,30 @@ class _BookIndexCard extends StatelessWidget {
                     children: [
                       Text(
                         bookIndex.bookTitle,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
-                          color: Color(0xFF1A1A1A),
+                          color: theme.textTheme.bodyLarge?.color,
                         ),
                       ),
                       if (bookIndex.volume != null) ...[
                         const SizedBox(height: 2),
                         Text(
                           'தொகுதி ${bookIndex.volume}',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12,
-                            color: Color(0xFF6B6B6B),
+                            color: isDark ? AppTheme.darkSubtle : AppTheme.subtleText,
                           ),
                         ),
                       ],
                     ],
                   ),
                 ),
-                const Icon(Icons.chevron_right_rounded,
-                    color: Color(0xFFD4A04A), size: 22),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: isDark ? AppTheme.darkGold : AppTheme.gold,
+                  size: 22,
+                ),
               ],
             ),
           ),
@@ -750,7 +794,7 @@ class _HadithSearchDelegate extends SearchDelegate<Hadith?> {
       key: const PageStorageKey('hadith_search_results'),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       itemCount: results.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      separatorBuilder: (context, index) => const SizedBox(height: 8),
       itemBuilder: (context, index) {
         final hadith = results[index];
         return Material(

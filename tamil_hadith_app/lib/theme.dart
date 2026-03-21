@@ -37,10 +37,52 @@ class AppTheme {
       brightness: Brightness.light,
       surface: surface,
     );
+    final textTheme = ThemeData.light().textTheme.copyWith(
+      headlineSmall: const TextStyle(
+        fontSize: 26,
+        fontWeight: FontWeight.w800,
+        color: darkText,
+        letterSpacing: 0.1,
+      ),
+      titleLarge: const TextStyle(
+        fontSize: 20,
+        fontWeight: FontWeight.w700,
+        color: darkText,
+      ),
+      titleMedium: const TextStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.w700,
+        color: darkText,
+      ),
+      bodyLarge: const TextStyle(
+        fontSize: 16,
+        height: 1.65,
+        color: darkText,
+      ),
+      bodyMedium: const TextStyle(
+        fontSize: 14,
+        height: 1.6,
+        color: darkText,
+      ),
+      bodySmall: const TextStyle(
+        fontSize: 12,
+        height: 1.5,
+        color: subtleText,
+      ),
+    );
     return ThemeData(
       useMaterial3: true,
       colorScheme: colorScheme,
       scaffoldBackgroundColor: cream,
+      textTheme: textTheme,
+      iconTheme: const IconThemeData(color: emerald),
+      splashColor: emerald.withValues(alpha: 0.06),
+      highlightColor: emerald.withValues(alpha: 0.04),
+      textSelectionTheme: TextSelectionThemeData(
+        cursorColor: emerald,
+        selectionColor: gold.withValues(alpha: 0.22),
+        selectionHandleColor: emerald,
+      ),
 
       // ── AppBar ──
       appBarTheme: const AppBarTheme(
@@ -96,6 +138,64 @@ class AppTheme {
           foregroundColor: emerald,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
+      ),
+      floatingActionButtonTheme: const FloatingActionButtonThemeData(
+        backgroundColor: emerald,
+        foregroundColor: cream,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(18)),
+        ),
+      ),
+
+      // ── Inputs / Search ──
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: surface,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        hintStyle: const TextStyle(color: mutedText, fontSize: 15),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: warmBorder),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: warmBorder),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: gold, width: 1.4),
+        ),
+      ),
+      searchBarTheme: SearchBarThemeData(
+        backgroundColor: WidgetStatePropertyAll(surface),
+        elevation: const WidgetStatePropertyAll(0),
+        shape: WidgetStatePropertyAll(
+          RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: const BorderSide(color: warmBorder),
+          ),
+        ),
+        hintStyle: const WidgetStatePropertyAll(
+          TextStyle(color: mutedText, fontSize: 15),
+        ),
+        textStyle: const WidgetStatePropertyAll(
+          TextStyle(color: darkText, fontSize: 15, fontWeight: FontWeight.w500),
+        ),
+      ),
+      searchViewTheme: const SearchViewThemeData(
+        backgroundColor: cream,
+        surfaceTintColor: Colors.transparent,
+      ),
+      snackBarTheme: SnackBarThemeData(
+        backgroundColor: emeraldDark,
+        contentTextStyle: const TextStyle(
+          color: cream,
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
+        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        behavior: SnackBarBehavior.floating,
       ),
 
       // ── Navigation Bar ──
@@ -161,10 +261,51 @@ class AppTheme {
       brightness: Brightness.dark,
       surface: darkSurface,
     );
+    final textTheme = ThemeData.dark().textTheme.copyWith(
+      headlineSmall: const TextStyle(
+        fontSize: 26,
+        fontWeight: FontWeight.w800,
+        color: Color(0xFFF5F0E8),
+      ),
+      titleLarge: const TextStyle(
+        fontSize: 20,
+        fontWeight: FontWeight.w700,
+        color: Color(0xFFF5F0E8),
+      ),
+      titleMedium: const TextStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.w700,
+        color: Color(0xFFF5F0E8),
+      ),
+      bodyLarge: const TextStyle(
+        fontSize: 16,
+        height: 1.65,
+        color: Color(0xFFF5F0E8),
+      ),
+      bodyMedium: const TextStyle(
+        fontSize: 14,
+        height: 1.6,
+        color: Color(0xFFF5F0E8),
+      ),
+      bodySmall: const TextStyle(
+        fontSize: 12,
+        height: 1.5,
+        color: darkSubtle,
+      ),
+    );
     return ThemeData(
       useMaterial3: true,
       colorScheme: colorScheme,
       scaffoldBackgroundColor: darkSurface,
+      textTheme: textTheme,
+      iconTheme: const IconThemeData(color: darkGold),
+      splashColor: darkGold.withValues(alpha: 0.06),
+      highlightColor: darkGold.withValues(alpha: 0.04),
+      textSelectionTheme: TextSelectionThemeData(
+        cursorColor: darkGold,
+        selectionColor: darkGold.withValues(alpha: 0.2),
+        selectionHandleColor: darkGold,
+      ),
 
       // ── AppBar ──
       appBarTheme: AppBarTheme(
@@ -220,6 +361,64 @@ class AppTheme {
           foregroundColor: darkEmerald,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
+      ),
+      floatingActionButtonTheme: const FloatingActionButtonThemeData(
+        backgroundColor: darkEmerald,
+        foregroundColor: Color(0xFFF5F0E8),
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(18)),
+        ),
+      ),
+
+      // ── Inputs / Search ──
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: darkCard,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        hintStyle: const TextStyle(color: darkSubtle, fontSize: 15),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: darkBorder),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: darkBorder),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: darkGold, width: 1.4),
+        ),
+      ),
+      searchBarTheme: SearchBarThemeData(
+        backgroundColor: const WidgetStatePropertyAll(darkCard),
+        elevation: const WidgetStatePropertyAll(0),
+        shape: WidgetStatePropertyAll(
+          RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: const BorderSide(color: darkBorder),
+          ),
+        ),
+        hintStyle: const WidgetStatePropertyAll(
+          TextStyle(color: darkSubtle, fontSize: 15),
+        ),
+        textStyle: const WidgetStatePropertyAll(
+          TextStyle(color: Color(0xFFF5F0E8), fontSize: 15, fontWeight: FontWeight.w500),
+        ),
+      ),
+      searchViewTheme: const SearchViewThemeData(
+        backgroundColor: darkSurface,
+        surfaceTintColor: Colors.transparent,
+      ),
+      snackBarTheme: SnackBarThemeData(
+        backgroundColor: darkCard,
+        contentTextStyle: const TextStyle(
+          color: Color(0xFFF5F0E8),
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
+        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        behavior: SnackBarBehavior.floating,
       ),
 
       // ── Navigation Bar ──

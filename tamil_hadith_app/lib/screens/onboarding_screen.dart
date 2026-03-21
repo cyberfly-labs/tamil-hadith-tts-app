@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import '../services/model_download_service.dart';
 
 /// Onboarding screen shown on first launch.
-/// Downloads the TTS model (~28 MB INT8) from HuggingFace with progress UI.
+/// Downloads the fast INT8 TTS model from HuggingFace.
 class OnboardingScreen extends StatefulWidget {
   /// Called when the model is ready and onboarding is complete.
   final VoidCallback onComplete;
@@ -36,11 +36,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       vsync: this,
       duration: const Duration(milliseconds: 1800),
     )..repeat(reverse: true);
-    _pulseAnim =
-        Tween<double>(begin: 0.85, end: 1.0).animate(CurvedAnimation(
-      parent: _pulseController,
-      curve: Curves.easeInOut,
-    ));
+    _pulseAnim = Tween<double>(begin: 0.85, end: 1.0).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
     _checkAndDownload();
   }
 
@@ -72,6 +70,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
     try {
       await _downloadService.downloadModel(
+        variant: TtsModelVariant.int8,
         onProgress: (received, total) {
           if (!mounted) return;
           setState(() {
@@ -126,10 +125,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              cs.primary.withValues(alpha: 0.06),
-              cs.surface,
-            ],
+            colors: [cs.primary.withValues(alpha: 0.06), cs.surface],
           ),
         ),
         child: SafeArea(
@@ -138,9 +134,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               return SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 36),
                 child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    minHeight: constraints.maxHeight,
-                  ),
+                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -274,8 +268,11 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                             color: Colors.green.withValues(alpha: 0.1),
                             shape: BoxShape.circle,
                           ),
-                          child: const Icon(Icons.check_rounded,
-                              size: 40, color: Colors.green),
+                          child: const Icon(
+                            Icons.check_rounded,
+                            size: 40,
+                            color: Colors.green,
+                          ),
                         ),
                         const SizedBox(height: 16),
                         Text(
@@ -295,14 +292,21 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                             color: cs.error.withValues(alpha: 0.1),
                             shape: BoxShape.circle,
                           ),
-                          child:
-                              Icon(Icons.cloud_off_rounded, size: 40, color: cs.error),
+                          child: Icon(
+                            Icons.cloud_off_rounded,
+                            size: 40,
+                            color: cs.error,
+                          ),
                         ),
                         const SizedBox(height: 16),
                         Text(
                           _errorText,
                           textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 13, color: cs.error, height: 1.5),
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: cs.error,
+                            height: 1.5,
+                          ),
                         ),
                         const SizedBox(height: 20),
                         FilledButton.icon(
@@ -311,7 +315,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                           label: const Text('மீண்டும் முயற்சி'),
                           style: FilledButton.styleFrom(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 24, vertical: 12),
+                              horizontal: 24,
+                              vertical: 12,
+                            ),
                           ),
                         ),
                       ],

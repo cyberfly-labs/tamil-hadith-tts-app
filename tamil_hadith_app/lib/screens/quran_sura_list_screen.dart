@@ -7,6 +7,7 @@ import '../widgets/animated_press_card.dart';
 import '../widgets/shimmer_loading.dart';
 import '../widgets/scroll_to_top_fab.dart';
 import 'bookmarks_screen.dart';
+import 'quran_tafsir_screen.dart';
 import 'quran_verse_list_screen.dart';
 import 'quran_verse_detail_screen.dart';
 import 'settings_screen.dart';
@@ -156,7 +157,9 @@ class _QuranSuraListScreenState extends State<QuranSuraListScreen> {
                                 Container(
                                   padding: const EdgeInsets.all(12),
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFFD4A04A).withValues(alpha: 0.1),
+                                    color: const Color(
+                                      0xFFD4A04A,
+                                    ).withValues(alpha: 0.1),
                                     shape: BoxShape.circle,
                                   ),
                                   child: const Icon(
@@ -192,10 +195,14 @@ class _QuranSuraListScreenState extends State<QuranSuraListScreen> {
 
                             Container(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 14, vertical: 6),
+                                horizontal: 14,
+                                vertical: 6,
+                              ),
                               decoration: BoxDecoration(
                                 border: Border.all(
-                                  color: const Color(0xFFD4A04A).withValues(alpha: 0.4),
+                                  color: const Color(
+                                    0xFFD4A04A,
+                                  ).withValues(alpha: 0.4),
                                   width: 1,
                                 ),
                                 borderRadius: BorderRadius.circular(20),
@@ -226,7 +233,9 @@ class _QuranSuraListScreenState extends State<QuranSuraListScreen> {
                       onTap: () => _showSearch(context),
                       child: Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 14),
+                          horizontal: 16,
+                          vertical: 14,
+                        ),
                         decoration: BoxDecoration(
                           color: const Color(0xFFFFFDF9),
                           borderRadius: BorderRadius.circular(14),
@@ -241,9 +250,11 @@ class _QuranSuraListScreenState extends State<QuranSuraListScreen> {
                         ),
                         child: Row(
                           children: [
-                            const Icon(Icons.search_rounded,
-                                color: Color(0xFF6B6B6B),
-                                size: 22),
+                            const Icon(
+                              Icons.search_rounded,
+                              color: Color(0xFF6B6B6B),
+                              size: 22,
+                            ),
                             const SizedBox(width: 12),
                             Text(
                               'வசனம் தேடுங்கள்...',
@@ -279,12 +290,26 @@ class _QuranSuraListScreenState extends State<QuranSuraListScreen> {
                 SliverPadding(
                   padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
                   sliver: SliverList(
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) {
-                        final suraNum = index + 1;
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: AnimatedPressCard(
+                    delegate: SliverChildBuilderDelegate((context, index) {
+                      final suraNum = index + 1;
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: AnimatedPressCard(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => QuranVerseListScreen(
+                                  database: widget.database,
+                                  suraNumber: suraNum,
+                                ),
+                              ),
+                            );
+                          },
+                          child: _SuraCard(
+                            suraNumber: suraNum,
+                            suraName: SuraNames.getName(suraNum),
+                            verseCount: SuraNames.getVerseCount(suraNum),
                             onTap: () {
                               Navigator.push(
                                 context,
@@ -296,27 +321,10 @@ class _QuranSuraListScreenState extends State<QuranSuraListScreen> {
                                 ),
                               );
                             },
-                            child: _SuraCard(
-                              suraNumber: suraNum,
-                              suraName: SuraNames.getName(suraNum),
-                              verseCount: SuraNames.getVerseCount(suraNum),
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => QuranVerseListScreen(
-                                      database: widget.database,
-                                      suraNumber: suraNum,
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
                           ),
-                        );
-                      },
-                      childCount: 114,
-                    ),
+                        ),
+                      );
+                    }, childCount: 114),
                   ),
                 ),
               ],
@@ -362,10 +370,7 @@ class _SuraCard extends StatelessWidget {
           decoration: BoxDecoration(
             color: const Color(0xFFFFFDF9),
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: const Color(0xFFE8DDD0),
-              width: 1,
-            ),
+            border: Border.all(color: const Color(0xFFE8DDD0), width: 1),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.025),
@@ -387,10 +392,7 @@ class _SuraCard extends StatelessWidget {
                     gradient: const LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
-                      colors: [
-                        Color(0xFF1B4D3E),
-                        Color(0xFF0D3020),
-                      ],
+                      colors: [Color(0xFF1B4D3E), Color(0xFF0D3020)],
                     ),
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
@@ -434,8 +436,11 @@ class _SuraCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                const Icon(Icons.chevron_right_rounded,
-                    color: Color(0xFFD4A04A), size: 22),
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: Color(0xFFD4A04A),
+                  size: 22,
+                ),
               ],
             ),
           ),
@@ -500,6 +505,7 @@ class _QuranSearchDelegate extends SearchDelegate<QuranVerse?> {
 
   /// Matches sura:aya pattern (e.g. "2:255", "114:1")
   static final RegExp _verseRefPattern = RegExp(r'^(\d+):(\d+)$');
+
   /// Matches standalone sura number (e.g. "2", "114")
   static final RegExp _suraNumPattern = RegExp(r'^\d+$');
 
@@ -510,20 +516,20 @@ class _QuranSearchDelegate extends SearchDelegate<QuranVerse?> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.search_rounded,
-                size: 48,
-                color: Theme.of(context)
-                    .colorScheme
-                    .onSurface
-                    .withValues(alpha: 0.15)),
+            Icon(
+              Icons.search_rounded,
+              size: 48,
+              color: Theme.of(
+                context,
+              ).colorScheme.onSurface.withValues(alpha: 0.15),
+            ),
             const SizedBox(height: 12),
             Text(
               'உரை அல்லது சூரா:வசனம் தேடுங்கள்',
               style: TextStyle(
-                color: Theme.of(context)
-                    .colorScheme
-                    .onSurface
-                    .withValues(alpha: 0.4),
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurface.withValues(alpha: 0.4),
               ),
             ),
           ],
@@ -532,16 +538,16 @@ class _QuranSearchDelegate extends SearchDelegate<QuranVerse?> {
     }
     // Allow single-char queries for number-based search
     final trimmed = query.trim();
-    final isNumeric = _verseRefPattern.hasMatch(trimmed) || _suraNumPattern.hasMatch(trimmed);
+    final isNumeric =
+        _verseRefPattern.hasMatch(trimmed) || _suraNumPattern.hasMatch(trimmed);
     if (!isNumeric && query.length < 2) {
       return Center(
         child: Text(
           'குறைந்தது 2 எழுத்துகள் தட்டச்சு செய்யவும்',
           style: TextStyle(
-            color: Theme.of(context)
-                .colorScheme
-                .onSurface
-                .withValues(alpha: 0.4),
+            color: Theme.of(
+              context,
+            ).colorScheme.onSurface.withValues(alpha: 0.4),
           ),
         ),
       );
@@ -608,9 +614,11 @@ class _QuranSearchDelegate extends SearchDelegate<QuranVerse?> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.search_off_rounded,
-                size: 48,
-                color: const Color(0xFF1A1A1A).withValues(alpha: 0.15)),
+            Icon(
+              Icons.search_off_rounded,
+              size: 48,
+              color: const Color(0xFF1A1A1A).withValues(alpha: 0.15),
+            ),
             const SizedBox(height: 12),
             Text(
               'முடிவுகள் இல்லை',
@@ -626,7 +634,7 @@ class _QuranSearchDelegate extends SearchDelegate<QuranVerse?> {
       key: const PageStorageKey('quran_search_results'),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       itemCount: results.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      separatorBuilder: (context, index) => const SizedBox(height: 8),
       itemBuilder: (context, index) {
         final verse = results[index];
         return Material(
@@ -637,72 +645,150 @@ class _QuranSearchDelegate extends SearchDelegate<QuranVerse?> {
                 context,
                 MaterialPageRoute(
                   builder: (_) =>
-                      QuranVerseDetailScreen(
-                        verses: [verse],
-                        startIndex: 0,
-                      ),
+                      QuranVerseDetailScreen(verses: [verse], startIndex: 0),
                 ),
               );
             },
             borderRadius: BorderRadius.circular(14),
             child: Container(
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFFFDF9),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: const Color(0xFFE8DDD0)),
-                  ),
-                  padding: const EdgeInsets.all(14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFFDF9),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFE8DDD0)),
+              ),
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
                     children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF1B4D3E),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              '${verse.sura}:${verse.aya}',
-                              style: const TextStyle(
-                                color: Color(0xFFD4A04A),
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
-                              ),
-                            ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1B4D3E),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          '${verse.sura}:${verse.aya}',
+                          style: const TextStyle(
+                            color: Color(0xFFD4A04A),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
                           ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              SuraNames.getName(verse.sura),
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: Color(0xFF6B6B6B),
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        verse.preview,
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          SuraNames.getName(verse.sura),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF6B6B6B),
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    verse.preview,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      height: 1.5,
+                      color: Color(0xFF1A1A1A),
+                    ),
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (verse.tafsirPreview.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1B4D3E).withValues(alpha: 0.05),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: const Color(
+                            0xFFD4A04A,
+                          ).withValues(alpha: 0.25),
+                        ),
+                      ),
+                      child: Text(
+                        verse.tafsirPreview,
                         style: const TextStyle(
-                          fontSize: 14,
+                          fontSize: 12,
                           height: 1.5,
-                          color: Color(0xFF1A1A1A),
+                          color: Color(0xFF24483C),
                         ),
                         maxLines: 3,
                         overflow: TextOverflow.ellipsis,
                       ),
-                    ],
-                  ),
-                ),
+                    ),
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => QuranTafsirScreen(verse: verse),
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.menu_book_outlined, size: 14),
+                        label: const Text('தஃப்ஸீர்'),
+                        style: OutlinedButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          foregroundColor: const Color(0xFF1B4D3E),
+                          side: BorderSide(
+                            color: const Color(
+                              0xFFD4A04A,
+                            ).withValues(alpha: 0.6),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => QuranTafsirScreen(verse: verse),
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.menu_book_outlined, size: 14),
+                        label: const Text('தஃப்ஸீர்'),
+                        style: OutlinedButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          foregroundColor: const Color(0xFF1B4D3E),
+                          side: BorderSide(
+                            color: const Color(
+                              0xFFD4A04A,
+                            ).withValues(alpha: 0.6),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
               ),
-            );
-          },
+            ),
+          ),
         );
+      },
+    );
   }
 }
