@@ -3,7 +3,6 @@ import 'dart:ffi';
 import 'dart:io';
 import 'dart:isolate';
 import 'dart:math';
-import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
@@ -244,12 +243,12 @@ class _TtsWorker {
   Pointer<Pointer<Float>>? _outputDataPtr;
   Pointer<IntPtr>? _outputLenPtr;
   // Reusable input token buffer — grows as needed, never shrinks.
-  Pointer<Int64>? _inputPtr;
+  Pointer<Int32>? _inputPtr;
   int _inputPtrLen = 0;
 
   bool get _isNativeAvailable => _enginePtr != null && _enginePtr != nullptr;
 
-  static const int _maxTokensPerChunk = 250;
+  static const int _maxTokensPerChunk = 320;
   static const int _crossfadeSamples = 400;
   static const double _silenceThreshold = 0.01;
   static const int _sampleRate = 16000;
@@ -604,7 +603,8 @@ class _TtsWorker {
       }
 
       // Always stream chunk-by-chunk for responsive playback
-      final sentences = _splitIntoSentences(normalizedText);
+      final tokenCache = <String, List<int>>{};
+      final sentences = _splitIntoSentences(normalizedText, tokenCache);
       debugPrint('TTS-Isolate: ${sentences.length} chunks from ${normalizedText.length} chars');
       Float32List? prevTail;
       bool isFirstAudioChunk = true;
@@ -619,7 +619,7 @@ class _TtsWorker {
         //    that crash or confuse the native VITS engine.
         if (RegExp(r'^[\s,;:.!?।]+$').hasMatch(chunk.trim())) continue;
 
-        final chunkTokens = _tokenizer.tokenize(chunk);
+        final chunkTokens = _tokenizeCached(chunk, tokenCache);
         // ── Guard: minimum token threshold ──
         //    VITS needs ≥3 tokens for stable synthesis; fewer tokens
         //    can produce silence, garbage, or native-level crashes.
@@ -857,7 +857,10 @@ class _TtsWorker {
 
   // ── Sentence splitting ──
 
-  List<String> _splitIntoSentences(String text) {
+  List<String> _splitIntoSentences(
+    String text,
+    Map<String, List<int>> tokenCache,
+  ) {
     // Step 1: split on sentence-ending punctuation and colons
     //   Colon is a primary split because hadith text uses "X கூறினார்:" pattern
     final raw = text.split(RegExp(r'(?<=[.!?।:\n])\s*'));
@@ -867,7 +870,7 @@ class _TtsWorker {
       if (sentence.trim().isEmpty) continue;
       // Skip punctuation-only fragments from comma insertion
       if (RegExp(r'^[\s,;:.!?।]+$').hasMatch(sentence.trim())) continue;
-      final tokens = _tokenizer.tokenize(sentence);
+      final tokens = _tokenizeCached(sentence, tokenCache);
       if (tokens.length <= _maxTokensPerChunk) {
         result.add(sentence);
         continue;
@@ -878,7 +881,7 @@ class _TtsWorker {
       final StringBuffer buf = StringBuffer();
       int bufTokens = 0;
       for (final part in parts) {
-        final pTokens = _tokenizer.tokenize(part).length;
+        final pTokens = _tokenizeCached(part, tokenCache).length;
         if (bufTokens + pTokens > _maxTokensPerChunk && bufTokens > 0) {
           result.add(buf.toString());
           buf.clear();
@@ -889,12 +892,12 @@ class _TtsWorker {
       }
       if (buf.isNotEmpty) {
         final remaining = buf.toString();
-        final remTokens = _tokenizer.tokenize(remaining).length;
+        final remTokens = _tokenizeCached(remaining, tokenCache).length;
         if (remTokens <= _maxTokensPerChunk) {
           result.add(remaining);
         } else {
           // Step 3: split on word boundaries (spaces)
-          _splitByWords(remaining, result);
+          _splitByWords(remaining, result, tokenCache);
         }
       }
     }
@@ -902,12 +905,16 @@ class _TtsWorker {
   }
 
   /// Final fallback: split text on spaces to stay within chunk limit.
-  void _splitByWords(String text, List<String> out) {
+  void _splitByWords(
+    String text,
+    List<String> out,
+    Map<String, List<int>> tokenCache,
+  ) {
     final words = text.split(' ');
     final StringBuffer buf = StringBuffer();
     int bufTokens = 0;
     for (final word in words) {
-      final wTokens = _tokenizer.tokenize(word).length;
+      final wTokens = _tokenizeCached(word, tokenCache).length;
       if (bufTokens + wTokens > _maxTokensPerChunk && bufTokens > 0) {
         out.add(buf.toString().trim());
         buf.clear();
@@ -918,6 +925,10 @@ class _TtsWorker {
       bufTokens += wTokens;
     }
     if (buf.isNotEmpty) out.add(buf.toString().trim());
+  }
+
+  List<int> _tokenizeCached(String text, Map<String, List<int>> tokenCache) {
+    return tokenCache.putIfAbsent(text, () => _tokenizer.tokenize(text));
   }
 
   // ── Native FFI inference ──
@@ -935,7 +946,7 @@ class _TtsWorker {
     if (_inputPtr == null || _inputPtrLen < len) {
       if (_inputPtr != null) calloc.free(_inputPtr!);
       _inputPtrLen = len + 64; // over-allocate slightly to avoid frequent reallocs
-      _inputPtr = calloc<Int64>(_inputPtrLen);
+      _inputPtr = calloc<Int32>(_inputPtrLen);
     }
     for (int i = 0; i < len; i++) {
       _inputPtr![i] = tokenIds[i];
@@ -963,8 +974,12 @@ class _TtsWorker {
   Float32List _trimSilence(Float32List audio) {
     int start = 0;
     int end = audio.length;
-    while (start < end && audio[start].abs() < _silenceThreshold) start++;
-    while (end > start && audio[end - 1].abs() < _silenceThreshold) end--;
+    while (start < end && audio[start].abs() < _silenceThreshold) {
+      start++;
+    }
+    while (end > start && audio[end - 1].abs() < _silenceThreshold) {
+      end--;
+    }
     start = (start - 64).clamp(0, audio.length);
     end = (end + 64).clamp(0, audio.length);
     if (start >= end) return Float32List(0);

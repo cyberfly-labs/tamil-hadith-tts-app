@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme.dart';
 
 /// Shimmer loading effect for skeleton placeholders.
 /// Replaces bare CircularProgressIndicator for a more polished loading state.
@@ -36,6 +37,10 @@ class _ShimmerLoadingState extends State<ShimmerLoading>
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final baseColor = isDark ? const Color(0xFF2E2E2E) : const Color(0xFFE8DDD0);
+    final highlightColor = isDark ? const Color(0xFF3A3A3A) : const Color(0xFFF5EFE6);
+
     return AnimatedBuilder(
       animation: _animation,
       builder: (context, child) {
@@ -44,10 +49,10 @@ class _ShimmerLoadingState extends State<ShimmerLoading>
             return LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.centerRight,
-              colors: const [
-                Color(0xFFE8DDD0),
-                Color(0xFFF5EFE6),
-                Color(0xFFE8DDD0),
+              colors: [
+                baseColor,
+                highlightColor,
+                baseColor,
               ],
               stops: [
                 _animation.value - 0.3,
@@ -72,11 +77,16 @@ class SkeletonCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardBg = isDark ? AppTheme.darkCard : AppTheme.surface;
+    final border = isDark ? AppTheme.darkBorder : AppTheme.warmBorder;
+    final shimmerBone = isDark ? const Color(0xFF2E2E2E) : const Color(0xFFE8DDD0);
+
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFFFFFDF9),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE8DDD0), width: 1),
+        color: cardBg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: border, width: 1),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       child: Row(
@@ -86,8 +96,8 @@ class SkeletonCard extends StatelessWidget {
             width: 42,
             height: 42,
             decoration: BoxDecoration(
-              color: const Color(0xFFE8DDD0),
-              borderRadius: BorderRadius.circular(10),
+              color: shimmerBone,
+              borderRadius: BorderRadius.circular(12),
             ),
           ),
           const SizedBox(width: 14),
@@ -99,7 +109,7 @@ class SkeletonCard extends StatelessWidget {
                   height: 14,
                   width: double.infinity,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFE8DDD0),
+                    color: shimmerBone,
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),
@@ -108,7 +118,7 @@ class SkeletonCard extends StatelessWidget {
                   height: 10,
                   width: 100,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFE8DDD0),
+                    color: shimmerBone,
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),
@@ -152,6 +162,9 @@ class SkeletonDetail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final shimmerBone = isDark ? const Color(0xFF2E2E2E) : const Color(0xFFE8DDD0);
+
     return ShimmerLoading(
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -162,7 +175,7 @@ class SkeletonDetail extends StatelessWidget {
             Container(
               height: 40,
               decoration: BoxDecoration(
-                color: const Color(0xFFE8DDD0),
+                color: shimmerBone,
                 borderRadius: BorderRadius.circular(12),
               ),
             ),
@@ -173,7 +186,7 @@ class SkeletonDetail extends StatelessWidget {
                 height: 14,
                 width: i == 7 ? 200 : double.infinity,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE8DDD0),
+                  color: shimmerBone,
                   borderRadius: BorderRadius.circular(4),
                 ),
               ),

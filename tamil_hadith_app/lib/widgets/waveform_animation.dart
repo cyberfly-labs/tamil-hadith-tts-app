@@ -12,7 +12,7 @@ class WaveformAnimation extends StatefulWidget {
   const WaveformAnimation({
     super.key,
     required this.isPlaying,
-    this.color = const Color(0xFF1B4D3E),
+    this.color = const Color(0xFFB8860B),
     this.height = 20,
     this.barCount = 5,
   });
@@ -95,7 +95,7 @@ class PulsingDot extends StatefulWidget {
 
   const PulsingDot({
     super.key,
-    this.color = const Color(0xFFD4A04A),
+    this.color = const Color(0xFF3E2723),
     this.size = 8,
   });
 

@@ -20,7 +20,7 @@ typedef TtsDestroyEngineDart = void Function(Pointer<MNN_TTS_Engine> engine);
 // Updated: VITS model needs noise_scale, length_scale, noise_scale_w
 typedef TtsSynthesizeNative = Int32 Function(
     Pointer<MNN_TTS_Engine> engine,
-    Pointer<Int64> inputIds,
+  Pointer<Int32> inputIds,
     IntPtr inputLen,
     Float noiseScale,
     Float lengthScale,
@@ -29,7 +29,7 @@ typedef TtsSynthesizeNative = Int32 Function(
     Pointer<IntPtr> outputLen);
 typedef TtsSynthesizeDart = int Function(
     Pointer<MNN_TTS_Engine> engine,
-    Pointer<Int64> inputIds,
+  Pointer<Int32> inputIds,
     int inputLen,
     double noiseScale,
     double lengthScale,

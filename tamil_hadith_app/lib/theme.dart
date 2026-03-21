@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 
-/// App theme — Islamic/Elegant aesthetic with refined Material 3
+/// App theme — Elegant Golden Yellow aesthetic with refined Material 3
 class AppTheme {
-  // ── Islamic Palette ──
-  static const Color emerald = Color(0xFF1B4D3E);
-  static const Color emeraldDark = Color(0xFF0D3020);
-  static const Color gold = Color(0xFFD4A04A);
-  static const Color goldDeep = Color(0xFFB8860B);
-  static const Color goldLight = Color(0xFFE8C882);
+  // ── Golden Yellow Palette ──
+  static const Color emerald = Color(0xFFB8860B);
+  static const Color emeraldDark = Color(0xFF8B6508);
+  static const Color gold = Color(0xFF3E2723);
+  static const Color goldDeep = Color(0xFF2D1A12);
+  static const Color goldLight = Color(0xFF6D4C41);
   static const Color cream = Color(0xFFFAF7F2);
   static const Color surface = Color(0xFFFFFDF9);
   static const Color warmBorder = Color(0xFFE8DDD0);
@@ -252,8 +252,8 @@ class AppTheme {
   static const Color darkCard = Color(0xFF1E1E1E);
   static const Color darkBorder = Color(0xFF2E2E2E);
   static const Color darkSubtle = Color(0xFF9E9E9E);
-  static const Color darkEmerald = Color(0xFF2D8B6F);
-  static const Color darkGold = Color(0xFFE8C882);
+  static const Color darkEmerald = Color(0xFF7A5D08);
+  static const Color darkGold = Color(0xFFFFD54F);
 
   static ThemeData get darkTheme {
     final colorScheme = ColorScheme.fromSeed(
@@ -309,7 +309,7 @@ class AppTheme {
 
       // ── AppBar ──
       appBarTheme: AppBarTheme(
-        backgroundColor: const Color(0xFF0A2E20),
+        backgroundColor: const Color(0xFF5A4500),
         foregroundColor: const Color(0xFFF5F0E8),
         elevation: 0,
         scrolledUnderElevation: 0,

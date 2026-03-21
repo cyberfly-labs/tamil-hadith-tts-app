@@ -5,7 +5,6 @@ import 'package:flutter/foundation.dart';
 import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 // ══════════════════════════════════════════════════════════════
 // Model variant definitions
@@ -13,26 +12,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// Available TTS model variants, ordered by size.
 enum TtsModelVariant {
-  /// INT8 quantised — smallest, fastest, slightly lower quality.
+  /// INT8 quantised — smallest, fastest.
   int8(
     fileName: 'model_int8.mnn',
-    label: 'சிறிய (INT8)',
+    label: 'INT8',
     description: 'வேகமான, குறைந்த அளவு',
     sizeMB: 28,
     sha256: '435d49e8861e38fd4c633e12e36d87116f5cd90a5ae8d5e1b8b81ce0e3d389ec',
     url:
         'https://huggingface.co/developerabu/mms-tts-tam-mnn/resolve/main/model_int8.mnn',
-  ),
-
-  /// FP16+INT8 hybrid — balanced quality / size.
-  fp16Int8(
-    fileName: 'model_fp16_int8.mnn',
-    label: 'நடுத்தர (FP16+INT8)',
-    description: 'சிறந்த தரம், நடுத்தர அளவு',
-    sizeMB: 55,
-    sha256: '98f86c685357d918b47364080135e980d7feed40125d809acdd24a445248b479',
-    url:
-        'https://huggingface.co/developerabu/mms-tts-tam-mnn/resolve/main/model_fp16_int8.mnn',
   );
 
   const TtsModelVariant({
@@ -64,56 +52,25 @@ enum TtsModelVariant {
 // ModelDownloadService — multi-model support
 // ══════════════════════════════════════════════════════════════
 
-/// Downloads and caches MNN TTS models from HuggingFace.
-///
-/// On first launch the fast INT8 model (~28 MB) is downloaded.
-/// Users can still switch to the larger FP16+INT8 model from settings.
+/// Downloads and caches the MNN TTS INT8 model from HuggingFace.
 class ModelDownloadService {
   // ── Singleton ──
   static final ModelDownloadService _instance = ModelDownloadService._();
   factory ModelDownloadService() => _instance;
   ModelDownloadService._();
 
-  static const String _prefKey = 'selected_model';
-  static const String _migrationKey = 'selected_model_default_v3';
-  static const String _legacyBalancedMigrationKey = 'selected_model_default_v2';
-
   /// Partial download suffix — renamed to final name only after success.
   static const String _partialSuffix = '.part';
 
   String? _modelsDir;
 
-  /// The currently-selected variant (persisted via SharedPreferences).
-  TtsModelVariant _selected = TtsModelVariant.int8;
-  TtsModelVariant get selectedVariant => _selected;
+  TtsModelVariant get selectedVariant => TtsModelVariant.int8;
 
-  /// Initialize the models directory and load the persisted selection.
+  /// Initialize the models directory.
   Future<void> initialize() async {
     final dir = await getApplicationDocumentsDirectory();
     _modelsDir = p.join(dir.path, 'models');
     await Directory(_modelsDir!).create(recursive: true);
-
-    final prefs = await SharedPreferences.getInstance();
-    final stored = prefs.getString(_prefKey);
-    if (stored == null) {
-      _selected = TtsModelVariant.int8;
-    } else {
-      _selected = TtsModelVariant.fromFileName(stored);
-    }
-
-    // Restore INT8 as the app default. Earlier builds auto-migrated users
-    // to FP16+INT8; move those legacy defaults back to INT8 once.
-    final migrated = prefs.getBool(_migrationKey) ?? false;
-    final legacyBalancedDefault =
-        prefs.getBool(_legacyBalancedMigrationKey) ?? false;
-    if (!migrated) {
-      if (stored == null ||
-          (legacyBalancedDefault && _selected == TtsModelVariant.fp16Int8)) {
-        _selected = TtsModelVariant.int8;
-        await prefs.setString(_prefKey, _selected.fileName);
-      }
-      await prefs.setBool(_migrationKey, true);
-    }
   }
 
   Future<void> _ensureDir() async {
@@ -121,27 +78,15 @@ class ModelDownloadService {
     await initialize();
   }
 
-  /// Persist the user's model choice.
-  Future<void> setSelectedVariant(TtsModelVariant variant) async {
-    _selected = variant;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_prefKey, variant.fileName);
-  }
-
-  /// Full path to the currently-selected model file.
+  /// Full path to the INT8 model file.
   Future<String> get modelPath async {
     await _ensureDir();
-    return p.join(_modelsDir!, _selected.fileName);
+    return p.join(_modelsDir!, TtsModelVariant.int8.fileName);
   }
 
-  /// Full path for an arbitrary variant.
-  Future<String> pathForVariant(TtsModelVariant variant) async {
-    await _ensureDir();
-    return p.join(_modelsDir!, variant.fileName);
-  }
-
-  /// Whether the currently-selected model has been downloaded.
-  Future<bool> get isModelDownloaded async => isVariantDownloaded(_selected);
+  /// Whether the INT8 model has been downloaded.
+  Future<bool> get isModelDownloaded async =>
+      isVariantDownloaded(TtsModelVariant.int8);
 
   /// Whether a specific variant has been downloaded.
   Future<bool> isVariantDownloaded(TtsModelVariant variant) async {
@@ -176,7 +121,7 @@ class ModelDownloadService {
     void Function(int bytesReceived, int totalBytes)? onProgress,
   }) async {
     await _ensureDir();
-    final v = variant ?? _selected;
+    final v = variant ?? TtsModelVariant.int8;
     final finalPath = p.join(_modelsDir!, v.fileName);
     final partialPath = '$finalPath$_partialSuffix';
 
@@ -294,6 +239,6 @@ class ModelDownloadService {
     return file.length();
   }
 
-  /// Get the size of the currently-selected model in bytes, or 0.
-  Future<int> get modelSize => variantSize(_selected);
+  /// Get the size of the INT8 model in bytes, or 0.
+  Future<int> get modelSize => variantSize(TtsModelVariant.int8);
 }

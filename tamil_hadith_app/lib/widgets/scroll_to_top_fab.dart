@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme.dart';
 
 /// A floating action button that appears when the user scrolls down,
 /// providing a smooth scroll-to-top action.
@@ -43,6 +44,7 @@ class _ScrollToTopFabState extends State<ScrollToTopFab> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return AnimatedScale(
       scale: _show ? 1.0 : 0.0,
       duration: const Duration(milliseconds: 200),
@@ -59,8 +61,8 @@ class _ScrollToTopFabState extends State<ScrollToTopFab> {
               curve: Curves.easeOutCubic,
             );
           },
-          backgroundColor: const Color(0xFF1B4D3E),
-          foregroundColor: const Color(0xFFD4A04A),
+          backgroundColor: isDark ? AppTheme.darkEmerald : AppTheme.emerald,
+          foregroundColor: isDark ? AppTheme.darkGold : AppTheme.gold,
           elevation: 4,
           child: const Icon(Icons.keyboard_arrow_up_rounded, size: 24),
         ),

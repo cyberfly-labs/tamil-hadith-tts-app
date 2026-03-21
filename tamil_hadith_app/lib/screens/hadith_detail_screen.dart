@@ -8,6 +8,7 @@ import '../services/tts_engine.dart';
 import '../services/audio_player_service.dart';
 import '../services/audio_cache_service.dart';
 import '../services/bookmark_service.dart';
+import '../theme.dart';
 import '../widgets/waveform_animation.dart';
 
 /// Detail screen for a single hadith with TTS audio playback
@@ -77,16 +78,26 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final appBarBg = isDark ? const Color(0xFF5A4500) : AppTheme.emerald;
+    final appBarFg = isDark ? const Color(0xFFF5F0E8) : AppTheme.cream;
+    final gold = isDark ? AppTheme.darkGold : AppTheme.gold;
+    final emerald = isDark ? AppTheme.darkEmerald : AppTheme.emerald;
+    final cardBg = isDark ? AppTheme.darkCard : AppTheme.surface;
+    final border = isDark ? AppTheme.darkBorder : AppTheme.warmBorder;
+    final textColor = isDark ? const Color(0xFFF5F0E8) : AppTheme.darkText;
+    final subtle = isDark ? AppTheme.darkSubtle : AppTheme.subtleText;
+
     return Scaffold(
       body: CustomScrollView(
         slivers: [
-          // ── Collapsing header with hadith info ──
           SliverAppBar(
             expandedHeight: 130,
             floating: false,
             pinned: true,
-            backgroundColor: const Color(0xFF1B4D3E),
-            foregroundColor: const Color(0xFFFAF7F2),
+            backgroundColor: appBarBg,
+            foregroundColor: appBarFg,
             title: Text('ஹதீஸ் #${widget.hadith.hadithNumber}'),
             actions: [
               IconButton(
@@ -113,14 +124,13 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
             ],
             flexibleSpace: FlexibleSpaceBar(
               background: Container(
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [
-                      Color(0xFF1B4D3E),
-                      Color(0xFF0D3020),
-                    ],
+                    colors: isDark
+                        ? [const Color(0xFF5A4500), const Color(0xFF4A3800)]
+                        : [AppTheme.emerald, AppTheme.emeraldDark],
                   ),
                 ),
                 child: SafeArea(
@@ -164,17 +174,17 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFD4A04A).withValues(alpha: 0.06),
-                    borderRadius: BorderRadius.circular(12),
+                    color: gold.withValues(alpha: isDark ? 0.1 : 0.06),
+                    borderRadius: BorderRadius.circular(14),
                     border: Border.all(
-                        color: const Color(0xFFD4A04A).withValues(alpha: 0.25)),
+                        color: gold.withValues(alpha: 0.25)),
                   ),
                   child: Text(
                     widget.hadith.chapter,
                     style: TextStyle(
                       fontSize: _fontSize,
                       fontWeight: FontWeight.w700,
-                      color: const Color(0xFF1B4D3E),
+                      color: emerald,
                       height: 1.5,
                     ),
                   ),
@@ -190,8 +200,7 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
                 child: Row(
                   children: [
                     Icon(Icons.person_rounded,
-                        size: 16,
-                        color: const Color(0xFF6B6B6B)),
+                        size: 16, color: subtle),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
@@ -199,7 +208,7 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
                         style: TextStyle(
                           fontSize: _fontSize - 2,
                           fontStyle: FontStyle.italic,
-                          color: const Color(0xFF6B6B6B),
+                          color: subtle,
                           height: 1.5,
                         ),
                       ),
@@ -221,8 +230,8 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
                           colors: [
-                            const Color(0xFFD4A04A).withValues(alpha: 0.0),
-                            const Color(0xFFD4A04A).withValues(alpha: 0.4),
+                            gold.withValues(alpha: 0.0),
+                            gold.withValues(alpha: 0.4),
                           ],
                         ),
                       ),
@@ -233,7 +242,7 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
                     child: Icon(
                       Icons.auto_awesome,
                       size: 14,
-                      color: const Color(0xFFD4A04A).withValues(alpha: 0.5),
+                      color: gold.withValues(alpha: 0.5),
                     ),
                   ),
                   Expanded(
@@ -242,8 +251,8 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
                           colors: [
-                            const Color(0xFFD4A04A).withValues(alpha: 0.4),
-                            const Color(0xFFD4A04A).withValues(alpha: 0.0),
+                            gold.withValues(alpha: 0.4),
+                            gold.withValues(alpha: 0.0),
                           ],
                         ),
                       ),
@@ -259,19 +268,16 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
             child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
               child: Container(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(18),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFFFDF9),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: const Color(0xFFE8DDD0),
-                    width: 1,
-                  ),
+                  color: cardBg,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: border, width: 1),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.02),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
+                      color: Colors.black.withValues(alpha: isDark ? 0.12 : 0.02),
+                      blurRadius: 10,
+                      offset: const Offset(0, 3),
                     ),
                   ],
                 ),
@@ -280,7 +286,7 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
                   style: TextStyle(
                     fontSize: _fontSize,
                     height: 1.85,
-                    color: const Color(0xFF1A1A1A),
+                    color: textColor,
                     letterSpacing: 0.1,
                   ),
                 ),
@@ -290,7 +296,6 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
         ],
       ),
 
-      // ── Bottom playback bar ──
       bottomNavigationBar: _buildPlaybackBar(context),
     );
   }
@@ -299,6 +304,7 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
     final showSpeed = _isPlaying ||
         _audioPlayer.player.processingState != ProcessingState.idle;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final gold = isDark ? AppTheme.darkGold : AppTheme.gold;
     final bgColor = isDark ? const Color(0xFF1E1E1E) : const Color(0xFFFFFDF9);
     final borderColor = isDark ? const Color(0xFF2E2E2E) : const Color(0xFFE8DDD0);
 
@@ -330,14 +336,14 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
                       if (_isPlaying) ...[
                         WaveformAnimation(
                           isPlaying: _isPlaying,
-                          color: const Color(0xFFD4A04A),
+                          color: gold,
                           height: 16,
                           barCount: 4,
                         ),
                         const SizedBox(width: 8),
                       ],
                       if (_isSynthesizing) ...[
-                        const PulsingDot(color: Color(0xFFD4A04A), size: 6),
+                        PulsingDot(color: gold, size: 6),
                         const SizedBox(width: 6),
                       ],
                       if (_statusText.isNotEmpty)
@@ -429,7 +435,7 @@ class _HadithDetailScreenState extends State<HadithDetailScreen> {
                     decoration: BoxDecoration(
                       color: isDark
                           ? Colors.white.withValues(alpha: 0.05)
-                          : const Color(0xFF1B4D3E).withValues(alpha: 0.04),
+                          : AppTheme.emerald.withValues(alpha: 0.04),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Row(
@@ -716,26 +722,28 @@ class _InfoChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final chipColor = isDark ? AppTheme.darkGold : AppTheme.gold;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: const Color(0xFFD4A04A).withValues(alpha: 0.12),
+        color: chipColor.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: const Color(0xFFD4A04A).withValues(alpha: 0.3),
+          color: chipColor.withValues(alpha: 0.3),
           width: 1,
         ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: const Color(0xFFD4A04A)),
+          Icon(icon, size: 14, color: chipColor),
           const SizedBox(width: 5),
           Flexible(
             child: Text(
               label,
-              style: const TextStyle(
-                color: Color(0xFFD4A04A),
+              style: TextStyle(
+                color: chipColor,
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
               ),

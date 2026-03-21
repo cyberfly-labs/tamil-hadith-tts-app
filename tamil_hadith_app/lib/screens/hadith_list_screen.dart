@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/hadith.dart';
 import '../services/hadith_database.dart';
+import '../theme.dart';
 import '../widgets/animated_press_card.dart';
 import '../widgets/shimmer_loading.dart';
 import '../widgets/scroll_to_top_fab.dart';
@@ -92,39 +93,43 @@ class _HadithListScreenState extends State<HadithListScreen> {
         title: Text(widget.bookTitle),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(40),
-          child: Container(
-            decoration: const BoxDecoration(
-              border: Border(
-                top: BorderSide(color: Color(0xFFD4A04A), width: 1),
+          child: Builder(builder: (context) {
+            final isDark = Theme.of(context).brightness == Brightness.dark;
+            final accent = isDark ? AppTheme.darkGold : AppTheme.gold;
+            return Container(
+              decoration: BoxDecoration(
+                border: Border(
+                  top: BorderSide(color: accent, width: 1),
+                ),
               ),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(
-                children: [
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFD4A04A).withValues(alpha: 0.1),
-                      border: Border.all(
-                        color: const Color(0xFFD4A04A).withValues(alpha: 0.3),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  children: [
+                    Container(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: accent.withValues(alpha: 0.1),
+                        border: Border.all(
+                          color: accent.withValues(alpha: 0.3),
+                        ),
+                        borderRadius: BorderRadius.circular(20),
                       ),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      '${widget.collection.shortName} · ${_hadiths.length}${_hasMore ? '+' : ''} ஹதீஸ்கள்',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFFD4A04A),
+                      child: Text(
+                        '${widget.collection.shortName} · ${_hadiths.length}${_hasMore ? '+' : ''} ஹதீஸ்கள்',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: accent,
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ),
+            );
+          }),
         ),
       ),
       body: _isLoading
@@ -181,21 +186,30 @@ class _HadithCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final cardBg = isDark ? AppTheme.darkCard : AppTheme.surface;
+    final border = isDark ? AppTheme.darkBorder : AppTheme.warmBorder;
+    final gold = isDark ? AppTheme.darkGold : AppTheme.gold;
+    final emerald = isDark ? AppTheme.darkEmerald : AppTheme.emerald;
+    final textColor = isDark ? const Color(0xFFF5F0E8) : AppTheme.darkText;
+    final subtle = isDark ? AppTheme.darkSubtle : AppTheme.subtleText;
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         child: Container(
           decoration: BoxDecoration(
-            color: const Color(0xFFFFFDF9),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFFE8DDD0), width: 1),
+            color: cardBg,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: border, width: 1),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.025),
-                blurRadius: 6,
-                offset: const Offset(0, 2),
+                color: Colors.black.withValues(alpha: isDark ? 0.14 : 0.03),
+                blurRadius: 10,
+                offset: const Offset(0, 3),
               ),
             ],
           ),
@@ -204,47 +218,41 @@ class _HadithCard extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Hadith number badge — emerald gradient
                 Container(
                   width: 46,
                   height: 46,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
+                    gradient: LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
-                      colors: [
-                        Color(0xFF1B4D3E),
-                        Color(0xFF0D3020),
-                      ],
+                      colors: isDark
+                          ? [const Color(0xFF5A4500), const Color(0xFF4A3800)]
+                          : [AppTheme.emerald, AppTheme.emeraldDark],
                     ),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: const Color(0xFFD4A04A),
-                      width: 1,
-                    ),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: gold, width: 1),
                   ),
                   child: Text(
                     '${hadith.hadithNumber}',
-                    style: const TextStyle(
-                      color: Color(0xFFD4A04A),
+                    style: TextStyle(
+                      color: gold,
                       fontWeight: FontWeight.bold,
                       fontSize: 14,
                     ),
                   ),
                 ),
                 const SizedBox(width: 12),
-                // Content
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         hadith.preview,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 14.5,
                           height: 1.6,
-                          color: Color(0xFF1A1A1A),
+                          color: textColor,
                         ),
                         maxLines: 3,
                         overflow: TextOverflow.ellipsis,
@@ -254,14 +262,14 @@ class _HadithCard extends StatelessWidget {
                         children: [
                           Icon(Icons.graphic_eq_rounded,
                               size: 14,
-                              color: const Color(0xFF1B4D3E).withValues(alpha: 0.5)),
+                              color: emerald.withValues(alpha: 0.6)),
                           const SizedBox(width: 4),
                           Text(
                             'AI ஒலி',
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w500,
-                              color: const Color(0xFF1B4D3E).withValues(alpha: 0.6),
+                              color: subtle,
                             ),
                           ),
                         ],
@@ -273,7 +281,7 @@ class _HadithCard extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.only(top: 12),
                   child: Icon(Icons.chevron_right_rounded,
-                      size: 20, color: const Color(0xFFD4A04A)),
+                      size: 20, color: gold),
                 ),
               ],
             ),

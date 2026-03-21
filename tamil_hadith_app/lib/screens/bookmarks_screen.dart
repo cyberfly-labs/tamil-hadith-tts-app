@@ -8,6 +8,7 @@ import '../services/hadith_database.dart';
 import '../services/quran_database.dart';
 import '../widgets/animated_press_card.dart';
 import '../widgets/shimmer_loading.dart';
+import '../theme.dart';
 import 'hadith_detail_screen.dart';
 import 'quran_verse_detail_screen.dart';
 
@@ -104,6 +105,12 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final gold = isDark ? AppTheme.darkGold : AppTheme.gold;
+    final textColor = isDark ? const Color(0xFFF5F0E8) : AppTheme.darkText;
+    final subtle = isDark ? AppTheme.darkSubtle : AppTheme.subtleText;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('புக்மார்க்கள்'),
@@ -129,32 +136,31 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
                           width: 80,
                           height: 80,
                           decoration: BoxDecoration(
-                            color: const Color(0xFFD4A04A).withValues(alpha: 0.08),
+                            color: gold.withValues(alpha: 0.08),
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: const Color(0xFFD4A04A).withValues(alpha: 0.2),
+                              color: gold.withValues(alpha: 0.2),
                             ),
                           ),
-                          child: const Icon(Icons.bookmark_outline_rounded,
-                              size: 40,
-                              color: Color(0xFFD4A04A)),
+                          child: Icon(Icons.bookmark_outline_rounded,
+                              size: 40, color: gold),
                         ),
                       ),
                       const SizedBox(height: 24),
-                      const Text(
+                      Text(
                         'புக்மார்க்கள் இல்லை',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w700,
-                          color: Color(0xFF1A1A1A),
+                          color: textColor,
                         ),
                       ),
                       const SizedBox(height: 8),
-                      const Text(
+                      Text(
                         'ஹதீஸ் பக்கத்தில் ★ ஐ தட்டவும்',
                         style: TextStyle(
                           fontSize: 14,
-                          color: Color(0xFF6B6B6B),
+                          color: subtle,
                         ),
                       ),
                     ],
@@ -293,21 +299,29 @@ class _BookmarkCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final cardBg = isDark ? AppTheme.darkCard : AppTheme.surface;
+    final border = isDark ? AppTheme.darkBorder : AppTheme.warmBorder;
+    final gold = isDark ? AppTheme.darkGold : AppTheme.gold;
+    final emerald = isDark ? AppTheme.darkEmerald : AppTheme.emerald;
+    final textColor = isDark ? const Color(0xFFF5F0E8) : AppTheme.darkText;
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         child: Container(
           decoration: BoxDecoration(
-            color: const Color(0xFFFFFDF9),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFFE8DDD0), width: 1),
+            color: cardBg,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: border, width: 1),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.025),
-                blurRadius: 6,
-                offset: const Offset(0, 2),
+                color: Colors.black.withValues(alpha: isDark ? 0.14 : 0.03),
+                blurRadius: 10,
+                offset: const Offset(0, 3),
               ),
             ],
           ),
@@ -316,37 +330,31 @@ class _BookmarkCard extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Number badge — emerald gradient
                 Container(
                   width: 44,
                   height: 44,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
+                    gradient: LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
-                      colors: [
-                        Color(0xFF1B4D3E),
-                        Color(0xFF0D3020),
-                      ],
+                      colors: isDark
+                          ? [const Color(0xFF5A4500), const Color(0xFF4A3800)]
+                          : [AppTheme.emerald, AppTheme.emeraldDark],
                     ),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: const Color(0xFFD4A04A),
-                      width: 1,
-                    ),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: gold, width: 1),
                   ),
                   child: Text(
                     item is Hadith ? '${(item as Hadith).hadithNumber}' : '${(item as QuranVerse).aya}',
-                    style: const TextStyle(
-                      color: Color(0xFFD4A04A),
+                    style: TextStyle(
+                      color: gold,
                       fontWeight: FontWeight.bold,
                       fontSize: 14,
                     ),
                   ),
                 ),
                 const SizedBox(width: 12),
-                // Content
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -357,15 +365,15 @@ class _BookmarkCard extends StatelessWidget {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF1B4D3E),
-                              borderRadius: BorderRadius.circular(4),
+                              color: emerald,
+                              borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
                               item is Hadith ? (item as Hadith).collection.shortName : 'குர்ஆன்',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 10,
                                 fontWeight: FontWeight.bold,
-                                color: Color(0xFFD4A04A),
+                                color: gold,
                               ),
                             ),
                           ),
@@ -373,10 +381,10 @@ class _BookmarkCard extends StatelessWidget {
                           Expanded(
                             child: Text(
                               item is Hadith ? (item as Hadith).book : SuraNames.getName((item as QuranVerse).sura),
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w600,
-                                color: Color(0xFF1B4D3E),
+                                color: emerald,
                               ),
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -386,10 +394,10 @@ class _BookmarkCard extends StatelessWidget {
                       const SizedBox(height: 4),
                       Text(
                         item is Hadith ? (item as Hadith).preview : (item as QuranVerse).preview,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 14,
                           height: 1.5,
-                          color: Color(0xFF1A1A1A),
+                          color: textColor,
                         ),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
@@ -397,7 +405,6 @@ class _BookmarkCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                // Remove button
                 IconButton(
                   icon: Icon(Icons.bookmark_remove_rounded,
                       color: Colors.red.shade400, size: 20),

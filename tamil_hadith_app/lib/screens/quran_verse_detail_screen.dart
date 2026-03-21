@@ -8,6 +8,7 @@ import '../services/bookmark_service.dart';
 import '../services/tts_engine.dart';
 import '../services/audio_player_service.dart';
 import '../services/audio_cache_service.dart';
+import '../theme.dart';
 import '../widgets/waveform_animation.dart';
 import 'quran_tafsir_screen.dart';
 
@@ -146,6 +147,16 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final totalVerses = widget.verses.length;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardBg = isDark ? AppTheme.darkCard : AppTheme.surface;
+    final border = isDark ? AppTheme.darkBorder : AppTheme.warmBorder;
+    final gold = isDark ? AppTheme.darkGold : AppTheme.gold;
+    final emerald = isDark ? AppTheme.darkEmerald : AppTheme.emerald;
+    final textColor = isDark ? const Color(0xFFF5F0E8) : AppTheme.darkText;
+    final appBarBg = isDark ? const Color(0xFF5A4500) : AppTheme.emerald;
+    final gradientColors = isDark
+        ? [const Color(0xFF5A4500), const Color(0xFF4A3800)]
+        : [AppTheme.emerald, AppTheme.emeraldDark];
 
     return Scaffold(
       body: CustomScrollView(
@@ -156,7 +167,7 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
             expandedHeight: 140,
             floating: false,
             pinned: true,
-            backgroundColor: const Color(0xFF1B4D3E),
+            backgroundColor: appBarBg,
             foregroundColor: const Color(0xFFFAF8F3),
             centerTitle: true,
             title: Text(_suraName),
@@ -166,7 +177,7 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [const Color(0xFF1B4D3E), const Color(0xFF0D3020)],
+                    colors: gradientColors,
                   ),
                 ),
                 child: SafeArea(
@@ -179,9 +190,7 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
                         children: [
                           Container(
                             height: 1,
-                            color: const Color(
-                              0xFFD4A04A,
-                            ).withValues(alpha: 0.3),
+                            color: gold.withValues(alpha: 0.3),
                           ),
                           const SizedBox(height: 10),
                           Row(
@@ -237,29 +246,25 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
                     duration: const Duration(milliseconds: 300),
                     curve: Curves.easeInOut,
                     decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(16),
                       border: Border.all(
-                        color: isActive
-                            ? const Color(0xFFD4A04A)
-                            : const Color(0xFFE8DDD0),
+                        color: isActive ? gold : border,
                         width: isActive ? 2 : 1,
                       ),
                       color: isActive
-                          ? const Color(0xFFD4A04A).withValues(alpha: 0.06)
-                          : const Color(0xFFFFFDF9),
+                          ? gold.withValues(alpha: 0.06)
+                          : cardBg,
                       boxShadow: isActive
                           ? [
                               BoxShadow(
-                                color: const Color(
-                                  0xFFD4A04A,
-                                ).withValues(alpha: 0.12),
+                                color: gold.withValues(alpha: 0.12),
                                 blurRadius: 12,
                                 offset: const Offset(0, 3),
                               ),
                             ]
                           : [
                               BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.02),
+                                color: Colors.black.withValues(alpha: isDark ? 0.14 : 0.02),
                                 blurRadius: 4,
                                 offset: const Offset(0, 1),
                               ),
@@ -279,21 +284,18 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
                               gradient: LinearGradient(
                                 begin: Alignment.topLeft,
                                 end: Alignment.bottomRight,
-                                colors: [
-                                  const Color(0xFF1B4D3E),
-                                  const Color(0xFF0D3020),
-                                ],
+                                colors: gradientColors,
                               ),
-                              borderRadius: BorderRadius.circular(10),
+                              borderRadius: BorderRadius.circular(12),
                               border: Border.all(
-                                color: const Color(0xFFD4A04A),
+                                color: gold,
                                 width: 1,
                               ),
                             ),
                             child: Text(
                               '${verse.aya}',
-                              style: const TextStyle(
-                                color: Color(0xFFD4A04A),
+                              style: TextStyle(
+                                color: gold,
                                 fontWeight: FontWeight.w800,
                                 fontSize: 14,
                               ),
@@ -309,7 +311,7 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
                                   style: TextStyle(
                                     fontSize: _fontSize,
                                     height: 1.85,
-                                    color: const Color(0xFF1A1A1A),
+                                    color: textColor,
                                     letterSpacing: 0.1,
                                     fontWeight: FontWeight.w500,
                                   ),
@@ -335,13 +337,9 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
                                       label: const Text('தஃப்ஸீர்'),
                                       style: OutlinedButton.styleFrom(
                                         visualDensity: VisualDensity.compact,
-                                        foregroundColor: const Color(
-                                          0xFF1B4D3E,
-                                        ),
+                                        foregroundColor: emerald,
                                         side: BorderSide(
-                                          color: const Color(
-                                            0xFFD4A04A,
-                                          ).withValues(alpha: 0.6),
+                                          color: gold.withValues(alpha: 0.6),
                                         ),
                                       ),
                                     ),
@@ -355,7 +353,7 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
                               padding: const EdgeInsets.only(left: 4, top: 8),
                               child: WaveformAnimation(
                                 isPlaying: _isPlaying && isActive,
-                                color: const Color(0xFFD4A04A),
+                                color: gold,
                                 height: 18,
                                 barCount: 4,
                               ),
@@ -381,6 +379,7 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
         _isPlaying ||
         _audioPlayer.player.processingState != ProcessingState.idle;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final gold = isDark ? AppTheme.darkGold : AppTheme.gold;
     final bgColor = isDark ? const Color(0xFF1E1E1E) : const Color(0xFFFFFDF9);
     final borderColor = isDark
         ? const Color(0xFF2E2E2E)
@@ -414,14 +413,14 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
                       if (_isPlaying) ...[
                         WaveformAnimation(
                           isPlaying: _isPlaying,
-                          color: const Color(0xFFD4A04A),
+                          color: gold,
                           height: 16,
                           barCount: 4,
                         ),
                         const SizedBox(width: 8),
                       ],
                       if (_isSynthesizing) ...[
-                        const PulsingDot(color: Color(0xFFD4A04A), size: 6),
+                        PulsingDot(color: gold, size: 6),
                         const SizedBox(width: 6),
                       ],
                       if (_statusText.isNotEmpty)
@@ -561,7 +560,7 @@ class _QuranVerseDetailScreenState extends State<QuranVerseDetailScreen> {
                     decoration: BoxDecoration(
                       color: isDark
                           ? Colors.white.withValues(alpha: 0.05)
-                          : const Color(0xFF1B4D3E).withValues(alpha: 0.04),
+                          : AppTheme.emerald.withValues(alpha: 0.04),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Row(
@@ -916,6 +915,8 @@ class _BookmarkButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final gold = isDark ? AppTheme.darkGold : AppTheme.gold;
     return ListenableBuilder(
       listenable: service,
       builder: (context, _) {
@@ -925,7 +926,7 @@ class _BookmarkButton extends StatelessWidget {
             isBookmarked
                 ? Icons.bookmark_rounded
                 : Icons.bookmark_outline_rounded,
-            color: isBookmarked ? const Color(0xFFD4A04A) : null,
+            color: isBookmarked ? gold : null,
           ),
           onPressed: () async {
             HapticFeedback.mediumImpact();
@@ -953,25 +954,27 @@ class _InfoChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final chipColor = isDark ? AppTheme.darkGold : AppTheme.gold;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: const Color(0xFFD4A04A).withValues(alpha: 0.12),
+        color: chipColor.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: const Color(0xFFD4A04A).withValues(alpha: 0.3),
+          color: chipColor.withValues(alpha: 0.3),
           width: 1,
         ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: const Color(0xFFD4A04A)),
+          Icon(icon, size: 14, color: chipColor),
           const SizedBox(width: 5),
           Text(
             label,
-            style: const TextStyle(
-              color: Color(0xFFD4A04A),
+            style: TextStyle(
+              color: chipColor,
               fontSize: 12,
               fontWeight: FontWeight.w600,
               letterSpacing: 0.2,

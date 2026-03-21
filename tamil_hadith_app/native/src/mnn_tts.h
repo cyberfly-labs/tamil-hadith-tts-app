@@ -36,12 +36,13 @@ void tts_destroy_engine(MNN_TTS_Engine* engine);
 /// @param noise_scale      Controls audio variation (default 0.667)
 /// @param length_scale     Controls speaking rate (default 1.0)
 /// @param noise_scale_w    Controls duration variation (default 0.8)
-/// @param output_data      Pointer to receive output audio buffer (caller must free with tts_free_output)
+/// @param output_data      Pointer to receive output audio buffer (engine-owned;
+///                         valid until the call *after* next tts_synthesize)
 /// @param output_len       Pointer to receive output audio length
 /// @return Error code
 TTS_ErrorCode tts_synthesize(
     MNN_TTS_Engine* engine,
-    const int64_t* input_ids,
+    const int32_t* input_ids,
     size_t input_len,
     float noise_scale,
     float length_scale,
@@ -51,8 +52,9 @@ TTS_ErrorCode tts_synthesize(
 );
 
 /// No-op (kept for ABI compatibility).
-/// Output buffer is now engine-owned; callers must copy data before
-/// the next tts_synthesize call on the same engine.
+/// Output uses a ping-pong double buffer: each call's output stays valid
+/// until the call *after* the next tts_synthesize on the same engine.
+/// Callers should still copy data promptly for safety.
 void tts_free_output(float* output_data);
 
 /// Get the last error message

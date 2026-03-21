@@ -166,6 +166,7 @@ class _HadithHomeBodyState extends State<_HadithHomeBody>
     final secondaryText = isDark ? AppTheme.darkSubtle : AppTheme.subtleText;
 
     if (_isLoading) {
+      final appBarBg = isDark ? const Color(0xFF5A4500) : AppTheme.emerald;
       return Scaffold(
         body: CustomScrollView(
           slivers: [
@@ -173,15 +174,17 @@ class _HadithHomeBodyState extends State<_HadithHomeBody>
               expandedHeight: 240,
               floating: false,
               pinned: true,
-              backgroundColor: const Color(0xFF1B4D3E),
+              backgroundColor: appBarBg,
               foregroundColor: const Color(0xFFFAF8F3),
               flexibleSpace: FlexibleSpaceBar(
                 background: Container(
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
-                      colors: [Color(0xFF1B4D3E), Color(0xFF0D3020)],
+                      colors: isDark
+                          ? [const Color(0xFF5A4500), const Color(0xFF4A3800)]
+                          : [AppTheme.emerald, AppTheme.emeraldDark],
                     ),
                   ),
                 ),
@@ -195,6 +198,11 @@ class _HadithHomeBodyState extends State<_HadithHomeBody>
 
     final books = _bookIndices[_selectedCollection] ?? [];
     final totalCount = _totalCounts[_selectedCollection] ?? 0;
+    final appBarBg = isDark ? const Color(0xFF5A4500) : AppTheme.emerald;
+    final gradientColors = isDark
+        ? [const Color(0xFF5A4500), const Color(0xFF4A3800)]
+        : [AppTheme.emerald, AppTheme.emeraldDark];
+    final gold = isDark ? AppTheme.darkGold : AppTheme.gold;
 
     return Scaffold(
       body: CustomScrollView(
@@ -206,7 +214,7 @@ class _HadithHomeBodyState extends State<_HadithHomeBody>
             floating: false,
             pinned: true,
             stretch: true,
-            backgroundColor: const Color(0xFF1B4D3E),
+            backgroundColor: appBarBg,
             foregroundColor: const Color(0xFFFAF8F3),
             actions: [
               IconButton(
@@ -241,14 +249,11 @@ class _HadithHomeBodyState extends State<_HadithHomeBody>
             ],
             flexibleSpace: FlexibleSpaceBar(
               background: Container(
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [
-                      Color(0xFF1B4D3E),
-                      Color(0xFF0D3020),
-                    ],
+                    colors: gradientColors,
                   ),
                 ),
                 child: SafeArea(
@@ -264,7 +269,7 @@ class _HadithHomeBodyState extends State<_HadithHomeBody>
                             height: 56,
                             decoration: BoxDecoration(
                               border: Border.all(
-                                color: const Color(0xFFD4A04A),
+                                color: gold,
                                 width: 1.5,
                               ),
                               shape: BoxShape.circle,
@@ -273,12 +278,12 @@ class _HadithHomeBodyState extends State<_HadithHomeBody>
                           Container(
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFD4A04A).withValues(alpha: 0.1),
+                              color: gold.withValues(alpha: 0.1),
                               shape: BoxShape.circle,
                             ),
-                            child: const Icon(
+                            child: Icon(
                               Icons.auto_stories_rounded,
-                              color: Color(0xFFD4A04A),
+                              color: gold,
                               size: 28,
                             ),
                           ),
@@ -296,10 +301,10 @@ class _HadithHomeBodyState extends State<_HadithHomeBody>
                         ),
                       ),
                       const SizedBox(height: 2),
-                      const Text(
+                      Text(
                         'ஹதீஸ் தொகுப்பு',
                         style: TextStyle(
-                          color: Color(0xFFD4A04A),
+                          color: gold,
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
                           letterSpacing: 0.2,
@@ -312,15 +317,15 @@ class _HadithHomeBodyState extends State<_HadithHomeBody>
                             horizontal: 14, vertical: 6),
                         decoration: BoxDecoration(
                           border: Border.all(
-                            color: const Color(0xFFD4A04A).withValues(alpha: 0.4),
+                            color: gold.withValues(alpha: 0.4),
                             width: 1,
                           ),
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Text(
                           '${books.length} புத்தகங்கள் • $totalCount ஹதீஸ்கள்',
-                          style: const TextStyle(
-                            color: Color(0xFFD4A04A),
+                          style: TextStyle(
+                            color: gold,
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
                             letterSpacing: 0.2,
@@ -336,7 +341,7 @@ class _HadithHomeBodyState extends State<_HadithHomeBody>
             bottom: PreferredSize(
               preferredSize: const Size.fromHeight(48),
               child: Container(
-                color: const Color(0xFFFFFDF9),
+                color: isDark ? AppTheme.darkCard : AppTheme.surface,
                 child: TabBar(
                   controller: _tabController,
                   tabs: [
@@ -344,10 +349,10 @@ class _HadithHomeBodyState extends State<_HadithHomeBody>
                     Tab(text: HadithCollection.muslim.shortName),
                   ],
                   indicatorSize: TabBarIndicatorSize.label,
-                  indicatorColor: const Color(0xFFD4A04A),
+                  indicatorColor: gold,
                   indicatorWeight: 2.5,
-                  labelColor: const Color(0xFF1B4D3E),
-                  unselectedLabelColor: const Color(0xFF6B6B6B),
+                  labelColor: isDark ? AppTheme.darkEmerald : AppTheme.emerald,
+                  unselectedLabelColor: isDark ? AppTheme.darkSubtle : AppTheme.subtleText,
                   labelStyle: const TextStyle(
                     fontWeight: FontWeight.w700,
                     fontSize: 14,
@@ -553,23 +558,22 @@ class _BookIndexCard extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             child: Row(
               children: [
-                // Index badge — emerald gradient
+                // Index badge — golden gradient
                 Container(
                   width: 42,
                   height: 42,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
+                    gradient: LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
-                      colors: [
-                        Color(0xFF1B4D3E),
-                        Color(0xFF0D3020),
-                      ],
+                      colors: isDark
+                          ? [const Color(0xFF5A4500), const Color(0xFF4A3800)]
+                          : [AppTheme.emerald, AppTheme.emeraldDark],
                     ),
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: const Color(0xFFD4A04A),
+                      color: isDark ? AppTheme.darkGold : AppTheme.gold,
                       width: 1,
                     ),
                   ),
@@ -772,23 +776,27 @@ class _HadithSearchDelegate extends SearchDelegate<Hadith?> {
 
   Widget _buildResultsList(List<Hadith> results) {
     if (results.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.search_off_rounded,
-                size: 48,
-                color: const Color(0xFF1A1A1A).withValues(alpha: 0.15)),
-            const SizedBox(height: 12),
-            Text(
-              'முடிவுகள் இல்லை',
-              style: TextStyle(
-                color: const Color(0xFF1A1A1A).withValues(alpha: 0.4),
+      return Builder(builder: (context) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        final textColor = isDark ? const Color(0xFFF5F0E8) : AppTheme.darkText;
+        return Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.search_off_rounded,
+                  size: 48,
+                  color: textColor.withValues(alpha: 0.15)),
+              const SizedBox(height: 12),
+              Text(
+                'முடிவுகள் இல்லை',
+                style: TextStyle(
+                  color: textColor.withValues(alpha: 0.4),
+                ),
               ),
-            ),
-          ],
-        ),
-      );
+            ],
+          ),
+        );
+      });
     }
     return ListView.separated(
       key: const PageStorageKey('hadith_search_results'),
@@ -797,6 +805,14 @@ class _HadithSearchDelegate extends SearchDelegate<Hadith?> {
       separatorBuilder: (context, index) => const SizedBox(height: 8),
       itemBuilder: (context, index) {
         final hadith = results[index];
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        final cardBg = isDark ? AppTheme.darkCard : AppTheme.surface;
+        final border = isDark ? AppTheme.darkBorder : AppTheme.warmBorder;
+        final gold = isDark ? AppTheme.darkGold : AppTheme.gold;
+        final emerald = isDark ? AppTheme.darkEmerald : AppTheme.emerald;
+        final textColor = isDark ? const Color(0xFFF5F0E8) : AppTheme.darkText;
+        final subtle = isDark ? AppTheme.darkSubtle : AppTheme.subtleText;
+
         return Material(
           color: Colors.transparent,
           child: InkWell(
@@ -808,12 +824,12 @@ class _HadithSearchDelegate extends SearchDelegate<Hadith?> {
                 ),
               );
             },
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(16),
             child: Container(
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFFFDF9),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: const Color(0xFFE8DDD0)),
+                    color: cardBg,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: border),
                   ),
                   padding: const EdgeInsets.all(14),
                   child: Column(
@@ -826,13 +842,13 @@ class _HadithSearchDelegate extends SearchDelegate<Hadith?> {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 8, vertical: 3),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF1B4D3E),
+                              color: emerald,
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
                               hadith.collection.shortName,
-                              style: const TextStyle(
-                                color: Color(0xFFD4A04A),
+                              style: TextStyle(
+                                color: gold,
                                 fontWeight: FontWeight.bold,
                                 fontSize: 11,
                               ),
@@ -843,16 +859,16 @@ class _HadithSearchDelegate extends SearchDelegate<Hadith?> {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 10, vertical: 4),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFD4A04A).withValues(alpha: 0.12),
+                              color: gold.withValues(alpha: 0.12),
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(
-                                color: const Color(0xFFD4A04A).withValues(alpha: 0.3),
+                                color: gold.withValues(alpha: 0.3),
                               ),
                             ),
                             child: Text(
                               '#${hadith.hadithNumber}',
-                              style: const TextStyle(
-                                color: Color(0xFFB8860B),
+                              style: TextStyle(
+                                color: isDark ? AppTheme.darkGold : AppTheme.goldDeep,
                                 fontWeight: FontWeight.bold,
                                 fontSize: 12,
                               ),
@@ -862,9 +878,9 @@ class _HadithSearchDelegate extends SearchDelegate<Hadith?> {
                           Expanded(
                             child: Text(
                               hadith.bookTitle,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 12,
-                                color: Color(0xFF6B6B6B),
+                                color: subtle,
                               ),
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -874,10 +890,10 @@ class _HadithSearchDelegate extends SearchDelegate<Hadith?> {
                       const SizedBox(height: 8),
                       Text(
                         hadith.preview,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 14,
                           height: 1.5,
-                          color: Color(0xFF1A1A1A),
+                          color: textColor,
                         ),
                         maxLines: 3,
                         overflow: TextOverflow.ellipsis,
@@ -891,4 +907,3 @@ class _HadithSearchDelegate extends SearchDelegate<Hadith?> {
         );
   }
 }
-

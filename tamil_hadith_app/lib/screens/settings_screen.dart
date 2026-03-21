@@ -1,10 +1,7 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../services/model_download_service.dart';
 import '../services/settings_service.dart';
 import '../screens/hadith_detail_screen.dart';
 
@@ -17,18 +14,9 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  final ModelDownloadService _downloadService = ModelDownloadService();
   final SettingsService _settings = SettingsService();
 
   bool _loading = true;
-  TtsModelVariant _selected = TtsModelVariant.int8;
-  final Map<TtsModelVariant, bool> _downloaded = {};
-  final Map<TtsModelVariant, int> _sizes = {};
-
-  // Download state
-  TtsModelVariant? _downloading;
-  double _downloadProgress = 0;
-  String _downloadStatus = '';
 
   int _cachedCount = 0;
 
@@ -39,132 +27,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _loadState() async {
-    await _downloadService.initialize();
-    _selected = _downloadService.selectedVariant;
-
-    for (final v in TtsModelVariant.values) {
-      _downloaded[v] = await _downloadService.isVariantDownloaded(v);
-      _sizes[v] = await _downloadService.variantSize(v);
-    }
-
     _cachedCount = await sharedAudioCache.getCachedCount();
 
     if (mounted) setState(() => _loading = false);
-  }
-
-  // ── Model management ──
-
-  Future<void> _selectModel(TtsModelVariant variant) async {
-    if (variant == _selected) return;
-    HapticFeedback.selectionClick();
-
-    if (_downloaded[variant] != true) {
-      await _downloadVariant(variant);
-      if (_downloaded[variant] != true) return;
-    }
-
-    await _downloadService.setSelectedVariant(variant);
-
-    sharedTtsEngine.dispose();
-    setState(() => _selected = variant);
-    await sharedTtsEngine.initialize();
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('${variant.label} மாதிரி பயன்படுத்தப்படுகிறது'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    }
-  }
-
-  Future<void> _downloadVariant(TtsModelVariant variant) async {
-    setState(() {
-      _downloading = variant;
-      _downloadProgress = 0;
-      _downloadStatus = 'பதிவிறக்கம் தொடங்குகிறது...';
-    });
-
-    try {
-      await _downloadService.downloadModel(
-        variant: variant,
-        onProgress: (received, total) {
-          if (!mounted) return;
-          setState(() {
-            if (total > 0) {
-              _downloadProgress = received / total;
-              final rMB = (received / (1024 * 1024)).toStringAsFixed(1);
-              final tMB = (total / (1024 * 1024)).toStringAsFixed(0);
-              _downloadStatus = '$rMB / $tMB MB';
-            } else {
-              _downloadStatus =
-                  '${(received / (1024 * 1024)).toStringAsFixed(1)} MB...';
-            }
-          });
-        },
-      );
-
-      _downloaded[variant] = true;
-      _sizes[variant] = await _downloadService.variantSize(variant);
-    } on SocketException {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('இணைய இணைப்பு இல்லை'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('பதிவிறக்க பிழை: $e'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _downloading = null);
-    }
-  }
-
-  Future<void> _deleteVariant(TtsModelVariant variant) async {
-    if (variant == _selected) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('தற்போது பயன்பாட்டில் உள்ள மாதிரியை நீக்க முடியாது'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      return;
-    }
-
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('மாதிரியை நீக்கவா?'),
-        content: Text('${variant.label} (~${variant.sizeMB} MB) நீக்கப்படும்.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('ரத்து'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('நீக்கு'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm != true) return;
-
-    await _downloadService.deleteVariant(variant);
-    _downloaded[variant] = false;
-    _sizes[variant] = 0;
-    if (mounted) setState(() {});
   }
 
   Future<void> _clearAudioCache() async {
@@ -218,8 +83,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final borderColor = isDark
         ? const Color(0xFF2E2E2E)
         : const Color(0xFFE8DDD0);
-    final emerald = isDark ? const Color(0xFF2D8B6F) : const Color(0xFF1B4D3E);
-    final gold = isDark ? const Color(0xFFE8C882) : const Color(0xFFD4A04A);
+    final emerald = isDark ? const Color(0xFF7A5D08) : const Color(0xFFB8860B);
+    final gold = isDark ? const Color(0xFFFFD54F) : const Color(0xFF3E2723);
     final subtleText = isDark
         ? const Color(0xFF9E9E9E)
         : const Color(0xFF6B6B6B);
@@ -256,44 +121,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const SizedBox(height: 24),
 
                 // ══════════════════════════════════════════
-                // 4. AI Model Selection
-                // ══════════════════════════════════════════
-                _SectionHeader(
-                  title: 'AI ஒலி மாதிரி',
-                  icon: Icons.memory_rounded,
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Text(
-                    'சிறிய மாதிரி வேகமாக பதிவிறக்கம் ஆகும். '
-                    'பெரிய மாதிரி சிறந்த ஒலித்தரம் கொடுக்கும்.',
-                    style: TextStyle(fontSize: 13, color: subtleText),
-                  ),
-                ),
-                const SizedBox(height: 12),
-
-                for (final variant in TtsModelVariant.values)
-                  _ModelCard(
-                    variant: variant,
-                    isSelected: variant == _selected,
-                    isDownloaded: _downloaded[variant] ?? false,
-                    sizeOnDisk: _sizes[variant] ?? 0,
-                    isDownloading: _downloading == variant,
-                    downloadProgress: _downloading == variant
-                        ? _downloadProgress
-                        : 0,
-                    downloadStatus: _downloading == variant
-                        ? _downloadStatus
-                        : '',
-                    onSelect: () => _selectModel(variant),
-                    onDelete: () => _deleteVariant(variant),
-                    isDark: isDark,
-                  ),
-
-                const SizedBox(height: 24),
-
-                // ══════════════════════════════════════════
-                // 5. Cache & Storage
+                // 2. Cache & Storage
                 // ══════════════════════════════════════════
                 _SectionHeader(title: 'சேமிப்பு', icon: Icons.storage_rounded),
                 const SizedBox(height: 8),
@@ -390,8 +218,8 @@ class _SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final emerald = isDark ? const Color(0xFF2D8B6F) : const Color(0xFF1B4D3E);
-    final gold = isDark ? const Color(0xFFE8C882) : const Color(0xFFD4A04A);
+    final emerald = isDark ? const Color(0xFF7A5D08) : const Color(0xFFB8860B);
+    final gold = isDark ? const Color(0xFFFFD54F) : const Color(0xFF3E2723);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
@@ -570,214 +398,6 @@ class _ThemeChip extends StatelessWidget {
                     color: selected ? emerald : inactiveColor,
                   ),
                 ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Model variant selector card.
-class _ModelCard extends StatelessWidget {
-  final TtsModelVariant variant;
-  final bool isSelected;
-  final bool isDownloaded;
-  final int sizeOnDisk;
-  final bool isDownloading;
-  final double downloadProgress;
-  final String downloadStatus;
-  final VoidCallback onSelect;
-  final VoidCallback onDelete;
-  final bool isDark;
-
-  const _ModelCard({
-    required this.variant,
-    required this.isSelected,
-    required this.isDownloaded,
-    required this.sizeOnDisk,
-    required this.isDownloading,
-    required this.downloadProgress,
-    required this.downloadStatus,
-    required this.onSelect,
-    required this.onDelete,
-    required this.isDark,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cardColor = isDark
-        ? const Color(0xFF1E1E1E)
-        : const Color(0xFFFFFDF9);
-    final borderColor = isDark
-        ? const Color(0xFF2E2E2E)
-        : const Color(0xFFE8DDD0);
-    final emerald = isDark ? const Color(0xFF2D8B6F) : const Color(0xFF1B4D3E);
-    final gold = isDark ? const Color(0xFFE8C882) : const Color(0xFFD4A04A);
-    final goldDeep = isDark ? const Color(0xFFE8C882) : const Color(0xFFB8860B);
-    final muted = const Color(0xFF9E9E9E);
-    final subtle = isDark ? const Color(0xFF9E9E9E) : const Color(0xFF6B6B6B);
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: isDownloading ? null : onSelect,
-          borderRadius: BorderRadius.circular(14),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 250),
-            curve: Curves.easeInOut,
-            decoration: BoxDecoration(
-              color: cardColor,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: isSelected ? gold : borderColor,
-                width: isSelected ? 2 : 1,
-              ),
-              boxShadow: isSelected
-                  ? [
-                      BoxShadow(
-                        color: gold.withValues(alpha: 0.12),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ]
-                  : null,
-            ),
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(
-                      isSelected
-                          ? Icons.radio_button_checked_rounded
-                          : Icons.radio_button_off_rounded,
-                      color: isSelected ? emerald : muted,
-                      size: 22,
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            variant.label,
-                            style: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            variant.description,
-                            style: TextStyle(fontSize: 12, color: subtle),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: gold.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: gold.withValues(alpha: 0.25)),
-                      ),
-                      child: Text(
-                        '~${variant.sizeMB} MB',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: goldDeep,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-
-                // Progress bar
-                if (isDownloading) ...[
-                  const SizedBox(height: 12),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(6),
-                    child: LinearProgressIndicator(
-                      value: downloadProgress > 0 ? downloadProgress : null,
-                      minHeight: 6,
-                      backgroundColor: borderColor,
-                      color: emerald,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    downloadStatus,
-                    style: TextStyle(fontSize: 12, color: subtle),
-                  ),
-                ],
-
-                // Status row
-                if (!isDownloading) ...[
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      const SizedBox(width: 32),
-                      if (isDownloaded)
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.check_circle_rounded,
-                              size: 14,
-                              color: Colors.green.shade600,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              'பதிவிறக்கப்பட்டது '
-                              '(${(sizeOnDisk / (1024 * 1024)).toStringAsFixed(0)} MB)',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: Colors.green.shade600,
-                              ),
-                            ),
-                          ],
-                        )
-                      else
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.cloud_download_outlined,
-                              size: 14,
-                              color: muted,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              'பதிவிறக்கம் தேவை',
-                              style: TextStyle(fontSize: 11, color: muted),
-                            ),
-                          ],
-                        ),
-                      const Spacer(),
-                      if (isDownloaded && !isSelected)
-                        IconButton(
-                          icon: Icon(
-                            Icons.delete_outline_rounded,
-                            size: 18,
-                            color: Colors.red.shade400,
-                          ),
-                          onPressed: onDelete,
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
-                          tooltip: 'நீக்கு',
-                        ),
-                    ],
-                  ),
-                ],
               ],
             ),
           ),
